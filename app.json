@@ -9,7 +9,10 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.soundmap.app",
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Soundmap measures how loud it is around you. Audio is processed on your device and never recorded or stored."
+      }
     },
     "android": {
       "package": "com.soundmap.app",

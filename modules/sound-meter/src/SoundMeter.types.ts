@@ -1,7 +1,8 @@
-export type SoundMeterModuleEvents = {
-  onChange: (params: ChangeEventPayload) => void;
+export type LevelEvent = {
+  /** A-weighted RMS over one 125 ms window, in dB relative to digital full scale. */
+  dbfs: number;
 };
 
-export type ChangeEventPayload = {
-  value: string;
+export type SoundMeterModuleEvents = {
+  onLevel: (event: LevelEvent) => void;
 };
