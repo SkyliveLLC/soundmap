@@ -1,0 +1,9 @@
+{
+  "platforms": ["android", "apple"],
+  "apple": {
+    "modules": ["SoundMeterModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.soundmeter.SoundMeterModule"]
+  }
+}
