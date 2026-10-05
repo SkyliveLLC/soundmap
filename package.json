@@ -45,6 +45,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test": "node --test \"src/**/*.test.ts\"",
+    "street-noise": "node scripts/build-street-noise.ts",
     "postinstall": "patch-package"
   },
   "private": true

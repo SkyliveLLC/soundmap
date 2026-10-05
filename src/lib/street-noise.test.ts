@@ -1,6 +1,7 @@
 /// <reference types="node" />
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { cellToLatLng } from 'h3-js';
@@ -11,6 +12,7 @@ import {
   parsePixelLine,
   parseStreetNoise,
   readCell,
+  serializeCells,
   serializeLevels,
   streetLevelAt,
   type Extent,
@@ -33,10 +35,6 @@ test('a cell energy-averages the pixels present in it', () => {
   const level = streetLevelAt(noise, MISSION_16TH);
   assert.ok(level.kind === 'modeled');
   assert.ok(Math.abs(level.laeq24h - 77.03) < 0.01, `got ${level.laeq24h}`);
-});
-
-test('pixels outside the extent are ignored', () => {
-  assert.equal(aggregatePixels(pixelsAt(OAKLAND, [70]), { release: '2022', extent: SF }).levels.size, 0);
 });
 
 test('a cell without pixels is below the floor inside the extent and not covered outside it', () => {
@@ -73,4 +71,14 @@ test('pixel lines parse as lng lat db and NoData is dropped', () => {
   assert.deepEqual(parsePixelLine('-122.4196 37.7651 61.25'), { latitude: 37.7651, longitude: -122.4196, db: 61.25 });
   assert.equal(parsePixelLine('-122.4196 37.7651 3.40282306073709653e+38'), null);
   assert.equal(parsePixelLine(''), null);
+});
+
+test('the committed cells.geojson holds exactly the cells and levels of the committed levels.json', () => {
+  const asset = (name: string) => readFileSync(new URL(`../../assets/street-noise/${name}`, import.meta.url), 'utf8');
+  const committed = parseStreetNoise(JSON.parse(asset('levels.json')));
+  assert.ok(committed.levels.size > 0);
+  assert.ok(
+    asset('cells.geojson') === serializeCells(committed),
+    'cells.geojson does not match levels.json. Rerun `npm run street-noise`.',
+  );
 });

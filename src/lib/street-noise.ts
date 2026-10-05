@@ -96,11 +96,13 @@ export function parsePixelLine(line: string): Pixel | null {
   return { latitude, longitude, db };
 }
 
-/** Energy average of the pixels present in each cell. Pixels outside the extent are ignored. */
+/**
+ * Energy average of the pixels present in each cell. Pixels just outside the extent still count:
+ * the source clip covers the extent's corners, so edge cells average all of their pixels.
+ */
 export function aggregatePixels(pixels: Iterable<Pixel>, source: { release: string; extent: Extent }): StreetNoise {
   const dbByCell = new Map<string, [number, ...number[]]>();
   for (const { latitude, longitude, db } of pixels) {
-    if (!contains(source.extent, latitude, longitude)) continue;
     const cell = cellAt(latitude, longitude);
     const levels = dbByCell.get(cell);
     if (levels) levels.push(db);
