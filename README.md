@@ -1,46 +1,56 @@
-# Welcome to your Expo app 👋
+# Soundmap
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A crowdsourced map of how loud places are, starting in San Francisco. Think Waze, but for noise. It helps remote workers find a quiet café and helps people with sensory sensitivities plan calmer routes.
 
-## Get started
+Status: early prototype. iOS and Android, built with Expo.
 
-1. Install dependencies
+## What works today
 
-   ```bash
-   npm install
-   ```
+- **Measure.** A 30 second, A-weighted noise measurement on your phone. It reports the average (LAeq), background (L90), loud moments (L10), peak (LAmax), and spikiness (L10 − L90).
+- **Map.** Add a measurement to the map and it shows up as a colored hexagon (H3, resolution 10, about one city block). Hexagons with several measurements show their energy average.
 
-2. Start the app
+Readings are uncalibrated. Phone microphones vary, and per-model calibration is not done yet.
 
-   ```bash
-   npx expo start
-   ```
+## Privacy
 
-In the output, you'll find options to open the app in a
+- Audio is processed on the device and never recorded or stored.
+- Only numbers are saved: the noise summary and the H3 cell. Raw GPS coordinates are never stored.
+- Adding a measurement to the map is always your choice.
+- Everything stays on your phone for now. There is no server.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Run it
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+You need Node 24+ and Xcode for iOS, or Android Studio for Android. The app uses a native module, so it does not run in Expo Go.
 
-### Other setup steps
+```bash
+npm install
+npx expo run:ios       # or: npx expo run:android
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+On the iOS Simulator the sound meter uses a synthetic café soundscape instead of the Mac microphone, so you can test the whole flow without a real device.
 
-## Learn more
+```bash
+npm test               # unit tests (node --test)
+npx tsc --noEmit       # typecheck
+npx expo lint
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+## Layout
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+- `modules/sound-meter/` is the native module (Swift and Kotlin). It applies A-weighting and emits a level every 125 ms.
+- `src/lib/` holds the pure logic: acoustics, H3 cell aggregation, the loudness color scale, and storage.
+- `src/hooks/` holds the measurement state machine and the "add to map" flow.
+- `src/app/` holds the screens (Expo Router): the Map and Measure tabs.
+- `patches/` holds a `patch-package` fix that lets `h3-js` run on Hermes ([uber/h3-js#203](https://github.com/uber/h3-js/issues/203)).
 
-## Join the community
+## Roadmap
 
-Join our community of developers creating universal apps.
+- Seed street noise from the US DOT National Transportation Noise Map.
+- Per-device calibration.
+- A shared backend so measurements from everyone show up on one map.
+- Venues: rate how quiet a café is at a given hour.
+- Quiet walking routes.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## License
+
+MIT. See [LICENSE](LICENSE).
