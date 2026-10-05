@@ -38,7 +38,15 @@
           "imageWidth": 76
         }
       ],
-      "./plugins/with-ios-scene-lifecycle"
+      "./plugins/with-ios-scene-lifecycle",
+      "@maplibre/maplibre-react-native",
+      "expo-sqlite",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Soundmap uses your location only when you add a measurement to the map. It is rounded to a small area around you; your exact position is never stored."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
