@@ -27,6 +27,11 @@ export function aggregateByCell(measurements: readonly Measurement[]): CellAggre
   return Array.from(levelsByCell, ([cell, levels]) => ({ cell, laeq: energyAverage(levels), count: levels.length }));
 }
 
+export function cellPolygon(cell: string): Polygon {
+  // `true` returns [lng, lat] pairs with the ring closed, as GeoJSON requires.
+  return { type: 'Polygon', coordinates: [cellToBoundary(cell, true)] };
+}
+
 /** Hexagon polygons for the map, each carrying its aggregate. Layers color them with `LOUDNESS_COLOR`. */
 export function cellsToGeoJSON(aggregates: readonly CellAggregate[]): FeatureCollection<Polygon, CellAggregate> {
   return {
@@ -34,8 +39,7 @@ export function cellsToGeoJSON(aggregates: readonly CellAggregate[]): FeatureCol
     features: aggregates.map((aggregate) => ({
       type: 'Feature',
       id: aggregate.cell,
-      // `true` returns [lng, lat] pairs with the ring closed, as GeoJSON requires.
-      geometry: { type: 'Polygon', coordinates: [cellToBoundary(aggregate.cell, true)] },
+      geometry: cellPolygon(aggregate.cell),
       properties: aggregate,
     })),
   };

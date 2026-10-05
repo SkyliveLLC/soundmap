@@ -29,7 +29,6 @@ export type CellReading =
   | { cell: string; measured: CellAggregate; street: StreetLevel }
   | { cell: string; measured: null; street: Exclude<StreetLevel, { kind: 'not-covered' }> };
 
-/** One raster pixel center with data. */
 export type Pixel = { latitude: number; longitude: number; db: number };
 
 // levels.json on disk. Cells are sorted and rounded to 0.1 dB so a rerun is byte-identical.
