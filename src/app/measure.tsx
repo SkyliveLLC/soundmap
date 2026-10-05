@@ -1,7 +1,9 @@
+import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAddToMap } from '@/hooks/use-add-to-map';
 import {
   FRAME_SEC,
   SESSION_FRAMES,
@@ -16,6 +18,8 @@ import { usePalette, type Palette } from '@/theme';
 export default function MeasureScreen() {
   const colors = usePalette();
   const { state, start, cancel } = useMeasurement();
+  // Once a summary is on screen, "Add to map" is the primary action.
+  const quiet = state.status === 'measuring' || state.status === 'done';
 
   return (
     <SafeAreaView edges={['top']} style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -39,13 +43,13 @@ export default function MeasureScreen() {
         onPress={state.status === 'measuring' ? cancel : start}
         style={({ pressed }) => [
           styles.button,
-          state.status === 'measuring'
+          quiet
             ? { borderWidth: 1, borderColor: colors.muted }
             : { backgroundColor: colors.accent },
           pressed && { opacity: 0.7 },
         ]}
       >
-        <Text style={[styles.buttonLabel, { color: state.status === 'measuring' ? colors.ink : colors.onAccent }]}>
+        <Text style={[styles.buttonLabel, { color: quiet ? colors.ink : colors.onAccent }]}>
           {buttonLabel[state.status]}
         </Text>
       </Pressable>
@@ -92,7 +96,12 @@ function Body({ state, colors }: { state: MeasurementState; colors: Palette }) {
       );
     }
     case 'done':
-      return <Summary summary={state.summary} colors={colors} />;
+      return (
+        <>
+          <Summary summary={state.summary} colors={colors} />
+          <AddToMap summary={state.summary} colors={colors} />
+        </>
+      );
     case 'denied':
       return (
         <Caption colors={colors}>
@@ -135,6 +144,52 @@ function Summary({ summary, colors }: { summary: NoiseSummary; colors: Palette }
       </View>
     </>
   );
+}
+
+function AddToMap({ summary, colors }: { summary: NoiseSummary; colors: Palette }) {
+  const { state, add } = useAddToMap(summary);
+  switch (state.status) {
+    case 'idle':
+    case 'locating':
+      return (
+        <Pressable
+          onPress={add}
+          disabled={state.status === 'locating'}
+          style={({ pressed }) => [styles.button, { backgroundColor: colors.accent }, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={[styles.buttonLabel, { color: colors.onAccent }]}>
+            {state.status === 'idle' ? 'Add to map' : 'Finding your location…'}
+          </Text>
+        </Pressable>
+      );
+    case 'saved':
+      return (
+        <Pressable
+          onPress={() => router.navigate({ pathname: '/', params: { cell: state.cell } })}
+          style={({ pressed }) => [styles.button, { borderWidth: 1, borderColor: colors.accent }, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={[styles.buttonLabel, { color: colors.accent }]}>Added to map · View</Text>
+        </Pressable>
+      );
+    case 'denied':
+      return (
+        <View>
+          <Caption colors={colors}>Location is off for Soundmap, so this measurement was not added to the map.</Caption>
+          <Pressable onPress={() => Linking.openSettings()} style={styles.secondaryButton}>
+            <Text style={[styles.secondaryLabel, { color: colors.accent }]}>Open Settings</Text>
+          </Pressable>
+        </View>
+      );
+    case 'failed':
+      return (
+        <View>
+          <Caption colors={colors}>Could not add this measurement to the map.</Caption>
+          <Pressable onPress={add} style={styles.secondaryButton}>
+            <Text style={[styles.secondaryLabel, { color: colors.accent }]}>Try again</Text>
+          </Pressable>
+        </View>
+      );
+  }
 }
 
 function Caption({ children, colors }: { children: ReactNode; colors: Palette }) {

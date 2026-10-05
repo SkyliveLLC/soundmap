@@ -1,13 +1,15 @@
 import { Tabs } from 'expo-router';
+import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { SymbolView } from 'expo-symbols';
 
+import { createSchema } from '@/lib/measurement-store';
 import { usePalette } from '@/theme';
 
 export default function RootLayout() {
   const colors = usePalette();
   return (
-    <>
+    <SQLiteProvider databaseName="soundmap.db" onInit={createSchema}>
       <StatusBar style="auto" />
       <Tabs
         screenOptions={{
@@ -36,6 +38,6 @@ export default function RootLayout() {
           }}
         />
       </Tabs>
-    </>
+    </SQLiteProvider>
   );
 }
