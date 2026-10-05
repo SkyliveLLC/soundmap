@@ -1,0 +1,47 @@
+/**
+ * dB SPL = A-weighted dBFS + CALIBRATION_OFFSET_DB.
+ *
+ * Placeholder, not a measurement. Phone MEMS microphones are typically specified
+ * around -26 dBFS for a 94 dB SPL tone, which puts digital full scale near 120 dB SPL.
+ * Real offsets differ per device model (mic part, OS input gain) and will come from
+ * measuring each model against a reference sound level meter. Until then every
+ * reading is uncalibrated and can be off by several dB in either direction.
+ */
+export const CALIBRATION_OFFSET_DB = 120;
+
+// Both shapes so that prepending or appending to any array proves non-emptiness.
+export type NonEmptyArray<T> = readonly [T, ...T[]] | readonly [...T[], T];
+
+export type NoiseSummary = {
+  /** Equivalent continuous level: the steady level carrying the same sound energy. */
+  laeq: number;
+  lamax: number;
+  /** Level exceeded 10% of the time: the loud moments. */
+  l10: number;
+  /** Level exceeded 90% of the time: the background. */
+  l90: number;
+  durationSec: number;
+};
+
+/** Summarizes consecutive A-weighted levels in dB SPL, each covering `frameSec` seconds. */
+export function summarize(levelsDbSpl: NonEmptyArray<number>, frameSec: number): NoiseSummary {
+  const ascending = [...levelsDbSpl].sort((a, b) => a - b);
+  const meanEnergy = levelsDbSpl.reduce((sum, level) => sum + 10 ** (level / 10), 0) / levelsDbSpl.length;
+
+  return {
+    laeq: 10 * Math.log10(meanEnergy),
+    lamax: ascending[ascending.length - 1],
+    l10: levelExceeded(ascending, 0.1),
+    l90: levelExceeded(ascending, 0.9),
+    durationSec: levelsDbSpl.length * frameSec,
+  };
+}
+
+// The level exceeded for `fraction` of the time is the (1 - fraction) percentile,
+// linearly interpolated between neighbouring samples.
+function levelExceeded(ascending: readonly number[], fraction: number): number {
+  const rank = (1 - fraction) * (ascending.length - 1);
+  const lower = Math.floor(rank);
+  const upper = Math.ceil(rank);
+  return ascending[lower] + (ascending[upper] - ascending[lower]) * (rank - lower);
+}

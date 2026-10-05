@@ -9,7 +9,9 @@
       "@/assets/*": [
         "./assets/*"
       ]
-    }
+    },
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true
   },
   "include": [
     "**/*.ts",
