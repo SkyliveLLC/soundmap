@@ -26,15 +26,23 @@ export type NoiseSummary = {
 /** Summarizes consecutive A-weighted levels in dB SPL, each covering `frameSec` seconds. */
 export function summarize(levelsDbSpl: NonEmptyArray<number>, frameSec: number): NoiseSummary {
   const ascending = [...levelsDbSpl].sort((a, b) => a - b);
-  const meanEnergy = levelsDbSpl.reduce((sum, level) => sum + 10 ** (level / 10), 0) / levelsDbSpl.length;
 
   return {
-    laeq: 10 * Math.log10(meanEnergy),
+    laeq: energyAverage(levelsDbSpl),
     lamax: ascending[ascending.length - 1],
     l10: levelExceeded(ascending, 0.1),
     l90: levelExceeded(ascending, 0.9),
     durationSec: levelsDbSpl.length * frameSec,
   };
+}
+
+/**
+ * Averages decibel levels by sound energy, the way the ear and LAeq combine them:
+ * 60 and 80 dB average to about 77 dB, not 70.
+ */
+export function energyAverage(levelsDb: NonEmptyArray<number>): number {
+  const meanEnergy = levelsDb.reduce((sum, level) => sum + 10 ** (level / 10), 0) / levelsDb.length;
+  return 10 * Math.log10(meanEnergy);
 }
 
 // The level exceeded for `fraction` of the time is the (1 - fraction) percentile,
