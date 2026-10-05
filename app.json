@@ -8,9 +8,11 @@
     "scheme": "soundmap",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.soundmap.app",
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "com.soundmap.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -32,7 +34,8 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      "./plugins/with-ios-scene-lifecycle"
     ],
     "experiments": {
       "typedRoutes": true,
