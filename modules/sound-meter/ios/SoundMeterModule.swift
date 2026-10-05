@@ -4,6 +4,9 @@ import ExpoModulesCore
 public class SoundMeterModule: Module {
   private let lock = NSLock()
   private var engine: AVAudioEngine?
+  #if targetEnvironment(simulator)
+  private var simulated: SimulatedInput?
+  #endif
 
   public func definition() -> ModuleDefinition {
     Name("SoundMeter")
@@ -56,6 +59,15 @@ public class SoundMeterModule: Module {
       throw MicrophonePermissionException()
     }
 
+    #if targetEnvironment(simulator)
+    guard simulated == nil else { return }
+    let simulated = SimulatedInput { [weak self] dbfs in
+      self?.sendEvent("onLevel", ["dbfs": dbfs])
+    }
+    simulated.start()
+    self.simulated = simulated
+    #else
+
     let session = AVAudioSession.sharedInstance()
     // .measurement turns off the system's gain control and voice processing.
     try session.setCategory(.record, mode: .measurement)
@@ -83,11 +95,16 @@ public class SoundMeterModule: Module {
       throw error
     }
     self.engine = engine
+    #endif
   }
 
   private func stop() {
     lock.lock()
     defer { lock.unlock() }
+    #if targetEnvironment(simulator)
+    simulated?.stop()
+    simulated = nil
+    #endif
     guard let engine else { return }
     engine.inputNode.removeTap(onBus: 0)
     engine.stop()
