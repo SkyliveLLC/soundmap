@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# Soundmap verification helper. Builds the iOS simulator app and runs this checkout's Metro.
+# Driving the simulator is done with agent-device (see SKILL.md), not with this script.
+#
+#   sm build          build the simulator .app into .verify/build/ (native changes only)
+#   sm metro [port]   start Metro for this checkout in the background (default port 8081)
+#   sm doctor         read-only health check: build present and fresh, Metro ours and up
+#   sm stop           stop the Metro this script started. Evidence is left in place.
+#   sm ad <args>      run agent-device with the flags in $AD_FLAGS (from device_open)
+#   sm tap "<label>"  tap the element with exactly this accessibility label, by its center
+#   sm db [sql]       query the app's SQLite file on the $AD_FLAGS simulator (default: all rows)
+set -euo pipefail
+
+ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+STATE="$ROOT/.verify"
+APP="$STATE/build/soundmap.app"
+METRO_ENV="$STATE/metro.env"
+# Files that change the native binary. A change here needs `sm build` again.
+NATIVE_PATHS=(app.json package.json package-lock.json modules plugins patches)
+# T3 Code's agent-device launcher. It requires the --config and --session flags device_open returns.
+AD="${AGENT_DEVICE:-$HOME/.t3/userdata/device/bin/agent-device}"
+
+mkdir -p "$STATE"
+cd "$ROOT"
+
+listener_pid() { lsof -nP -t -iTCP:"$1" -sTCP:LISTEN 2>/dev/null | head -1; }
+pid_cwd() { lsof -a -p "$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p'; }
+# Content hash of the native inputs, committed or not. Android build output is excluded.
+native_hash() { find "${NATIVE_PATHS[@]}" -type f -not -path 'modules/*/android/build/*' | sort | xargs shasum | shasum | cut -c1-12; }
+
+case "${1:-}" in
+  build)
+    echo "Building simulator app (cold build takes about 3-4 min)..."
+    CI=1 npx expo run:ios --device generic --output "$STATE/build" --no-bundler >"$STATE/build.log" 2>&1 \
+      || { tail -20 "$STATE/build.log"; echo "Build failed. Full log: $STATE/build.log"; exit 1; }
+    native_hash >"$STATE/build/NATIVE_HASH"
+    echo "Built $APP"
+    ;;
+
+  metro)
+    port="${2:-8081}"
+    if pid="$(listener_pid "$port")" && [ -n "$pid" ]; then
+      if [ "$(pid_cwd "$pid")" = "$ROOT" ]; then echo "Metro for this checkout already on :$port"; exit 0; fi
+      echo "Port $port is owned by pid $pid in $(pid_cwd "$pid"). Pick another: sm metro $((port + 1))"
+      exit 1
+    fi
+    # setsid is not on macOS. A subshell with job control gives Metro its own process group.
+    (set -m; CI=1 nohup npx expo start --dev-client --port "$port" >"$STATE/metro.log" 2>&1 & echo "$!" >"$STATE/metro.pgid")
+    for _ in $(seq 1 60); do
+      curl -s "localhost:$port/status" | grep -q packager-status:running && break
+      sleep 1
+    done
+    curl -s "localhost:$port/status" | grep -q packager-status:running \
+      || { tail -20 "$STATE/metro.log"; echo "Metro did not come up"; exit 1; }
+    printf 'METRO_PORT=%s\nMETRO_PGID=%s\n' "$port" "$(cat "$STATE/metro.pgid")" >"$METRO_ENV"
+    rm "$STATE/metro.pgid"
+    echo "Metro ready on :$port (log: $STATE/metro.log)"
+    ;;
+
+  doctor)
+    ok=1
+    if [ -d "$APP" ]; then
+      built="$(cat "$STATE/build/NATIVE_HASH" 2>/dev/null || echo unknown)"
+      if [ "$built" = "$(native_hash)" ]; then
+        echo "build: $APP (native inputs unchanged)"
+      else
+        echo "build: STALE. Native inputs changed since the build (${NATIVE_PATHS[*]}). Run: sm build"; ok=0
+      fi
+    else
+      echo "build: missing. Run: sm build"; ok=0
+    fi
+    if [ -f "$METRO_ENV" ]; then
+      # shellcheck disable=SC1090
+      . "$METRO_ENV"
+      pid="$(listener_pid "$METRO_PORT" || true)"
+      if [ -n "$pid" ] && [ "$(pid_cwd "$pid")" = "$ROOT" ] && curl -s "localhost:$METRO_PORT/status" | grep -q running; then
+        echo "metro: up on :$METRO_PORT, serving $ROOT"
+      else
+        echo "metro: not running for this checkout on :$METRO_PORT. Run: sm metro $METRO_PORT"; ok=0
+      fi
+    else
+      echo "metro: not started by sm. Run: sm metro"; ok=0
+    fi
+    [ "$ok" = 1 ] && echo "doctor: OK" || { echo "doctor: NOT READY"; exit 1; }
+    ;;
+
+  stop)
+    if [ -f "$METRO_ENV" ]; then
+      # shellcheck disable=SC1090
+      . "$METRO_ENV"
+      kill -- "-$METRO_PGID" 2>/dev/null || true
+      rm "$METRO_ENV"
+      echo "Stopped Metro (process group $METRO_PGID, port $METRO_PORT)"
+    else
+      echo "No Metro started by sm"
+    fi
+    ;;
+
+  ad)
+    shift
+    : "${AD_FLAGS:?Set AD_FLAGS to the --platform/--udid/--config/--session flags device_open returned}"
+    # shellcheck disable=SC2086
+    exec "$AD" "$@" $AD_FLAGS
+    ;;
+
+  tap)
+    # iOS 27 puts a full-screen floating-bar container over app content, so agent-device
+    # refuses label/ref presses as "covered". Pressing the element's center still lands.
+    label="${2:?usage: sm tap \"<label>\"}"
+    : "${AD_FLAGS:?Set AD_FLAGS to the --platform/--udid/--config/--session flags device_open returned}"
+    # shellcheck disable=SC2086
+    point="$("$AD" snapshot --raw $AD_FLAGS | LABEL="$label" node -e '
+      const lines = require("fs").readFileSync(0, "utf8").split("\n").filter((l) => l.startsWith("{"));
+      const node = lines.map((l) => JSON.parse(l)).find((n) => n.label === process.env.LABEL && n.type !== "Application");
+      if (!node) process.exit(1);
+      console.log(Math.round(node.rect.x + node.rect.width / 2), Math.round(node.rect.y + node.rect.height / 2));
+    ')" || { echo "No element labelled \"$label\" on screen. Run: sm ad snapshot -i"; exit 1; }
+    # shellcheck disable=SC2086
+    "$AD" press $point $AD_FLAGS
+    ;;
+
+  db)
+    : "${AD_FLAGS:?Set AD_FLAGS to the --platform/--udid/--config/--session flags device_open returned}"
+    udid="$(sed -n 's/.*--udid \([^ ]*\).*/\1/p' <<<"$AD_FLAGS")"
+    data="$(xcrun simctl get_app_container "$udid" com.soundmap.app data)" || { echo "App not installed on $udid"; exit 1; }
+    file="$data/Documents/SQLite/soundmap.db"
+    [ -f "$file" ] || { echo "No database yet: the app creates it on first launch"; exit 1; }
+    sqlite3 -header "$file" "${2:-SELECT * FROM measurements ORDER BY at;}"
+    ;;
+
+  *)
+    sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+    exit 1
+    ;;
+esac
