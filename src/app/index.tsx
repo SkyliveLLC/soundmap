@@ -16,7 +16,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { aggregateByCell, cellsToGeoJSON, type CellAggregate } from '@/lib/cells';
-import { loudnessBand } from '@/lib/loudness';
+import { LOUDNESS_COLOR, loudnessBand } from '@/lib/loudness';
 import { listMeasurements } from '@/lib/measurement-store';
 import { usePalette, type Palette } from '@/theme';
 
@@ -72,12 +72,12 @@ export default function MapScreen() {
               if (typeof cell === 'string') router.setParams({ cell });
             }}
           >
-            <Layer id="cell-fill" type="fill" paint={{ 'fill-color': ['get', 'color'], 'fill-opacity': 0.45 }} />
+            <Layer id="cell-fill" type="fill" paint={{ 'fill-color': LOUDNESS_COLOR, 'fill-opacity': 0.45 }} />
             <Layer
               id="cell-outline"
               type="line"
               paint={{
-                'line-color': ['get', 'color'],
+                'line-color': LOUDNESS_COLOR,
                 'line-width': ['case', ['==', ['get', 'cell'], selectedCell ?? ''], 3, 1.5],
               }}
             />

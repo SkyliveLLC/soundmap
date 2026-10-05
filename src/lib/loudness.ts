@@ -1,3 +1,5 @@
+import type { FillLayerSpecification } from '@maplibre/maplibre-react-native';
+
 export type LoudnessBand = { label: string; color: string };
 
 // Upper bounds are exclusive: 45.0 dBA is already "Quiet".
@@ -13,3 +15,16 @@ const LOUDEST_BAND = { label: 'Very loud', color: '#C62828' };
 export function loudnessBand(laeq: number): LoudnessBand {
   return QUIETER_BANDS.find((band) => laeq < band.below) ?? LOUDEST_BAND;
 }
+
+type ColorExpression = Extract<NonNullable<FillLayerSpecification['paint']>['fill-color'], unknown[]>;
+
+/**
+ * MapLibre color for a feature's `laeq` property, on the same scale as `loudnessBand`.
+ * A `step` output applies from its stop upward, matching the exclusive `below` bounds.
+ */
+export const LOUDNESS_COLOR: ColorExpression = [
+  'step',
+  ['get', 'laeq'],
+  QUIETER_BANDS[0].color,
+  ...[...QUIETER_BANDS.slice(1), LOUDEST_BAND].flatMap((band, i) => [QUIETER_BANDS[i].below, band.color]),
+];

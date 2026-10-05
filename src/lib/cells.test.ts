@@ -41,7 +41,8 @@ test('measurements group by cell regardless of order', () => {
 });
 
 test('hexagons are closed GeoJSON rings in longitude, latitude order', () => {
-  const [feature] = cellsToGeoJSON([{ cell: MISSION_16TH, laeq: 62, count: 1 }]).features;
+  const aggregate = { cell: MISSION_16TH, laeq: 62, count: 1 };
+  const [feature] = cellsToGeoJSON([aggregate]).features;
   const ring = feature.geometry.coordinates[0];
   assert.equal(ring.length, 7);
   assert.deepEqual(ring[0], ring[6]);
@@ -49,5 +50,5 @@ test('hexagons are closed GeoJSON rings in longitude, latitude order', () => {
     assertClose(lng, -122.4196, 0.003);
     assertClose(lat, 37.7651, 0.003);
   }
-  assert.equal(feature.properties.label, 'Moderate');
+  assert.deepEqual(feature.properties, aggregate);
 });

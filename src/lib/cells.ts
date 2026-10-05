@@ -2,7 +2,6 @@ import type { FeatureCollection, Polygon } from 'geojson';
 import { cellToBoundary, latLngToCell } from 'h3-js';
 
 import { energyAverage, type NoiseSummary } from './acoustics.ts';
-import { loudnessBand, type LoudnessBand } from './loudness.ts';
 
 // Resolution 10 hexagons are about 15,000 m², roughly a city block: coarse enough
 // that a saved cell does not pinpoint where someone sat.
@@ -28,8 +27,8 @@ export function aggregateByCell(measurements: readonly Measurement[]): CellAggre
   return Array.from(levelsByCell, ([cell, levels]) => ({ cell, laeq: energyAverage(levels), count: levels.length }));
 }
 
-/** Hexagon polygons for the map, each carrying its aggregate and loudness band. */
-export function cellsToGeoJSON(aggregates: readonly CellAggregate[]): FeatureCollection<Polygon, CellAggregate & LoudnessBand> {
+/** Hexagon polygons for the map, each carrying its aggregate. Layers color them with `LOUDNESS_COLOR`. */
+export function cellsToGeoJSON(aggregates: readonly CellAggregate[]): FeatureCollection<Polygon, CellAggregate> {
   return {
     type: 'FeatureCollection',
     features: aggregates.map((aggregate) => ({
@@ -37,7 +36,7 @@ export function cellsToGeoJSON(aggregates: readonly CellAggregate[]): FeatureCol
       id: aggregate.cell,
       // `true` returns [lng, lat] pairs with the ring closed, as GeoJSON requires.
       geometry: { type: 'Polygon', coordinates: [cellToBoundary(aggregate.cell, true)] },
-      properties: { ...aggregate, ...loudnessBand(aggregate.laeq) },
+      properties: aggregate,
     })),
   };
 }
