@@ -3,6 +3,7 @@ import { getResolution, isValidCell } from 'h3-js';
 import type { NoiseSummary } from './acoustics.ts';
 import type { Calibration } from './calibration.ts';
 import { CELL_RESOLUTION } from './cells.ts';
+import type { Visit } from './venues.ts';
 
 /** Length of one measurement. The server accepts readings of exactly this length. */
 export const SESSION_SEC = 30;
@@ -16,6 +17,8 @@ export type Measurement = {
   summary: NoiseSummary;
   /** The phone model and offset the summary's levels were measured with. */
   calibration: Calibration;
+  /** Set when the person said which venue they were in. */
+  visit?: Visit;
 };
 
 // Comfortably wider than anything a phone can report: full scale sits near 120 dB SPL.

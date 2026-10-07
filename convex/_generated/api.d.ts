@@ -12,6 +12,9 @@ import type * as auth from "../auth.js";
 import type * as dev from "../dev.js";
 import type * as http from "../http.js";
 import type * as measurements from "../measurements.js";
+import type * as validators from "../validators.js";
+import type * as venueSearch from "../venueSearch.js";
+import type * as venues from "../venues.js";
 
 import type {
   ApiFromModules,
@@ -24,6 +27,9 @@ declare const fullApi: ApiFromModules<{
   dev: typeof dev;
   http: typeof http;
   measurements: typeof measurements;
+  validators: typeof validators;
+  venueSearch: typeof venueSearch;
+  venues: typeof venues;
 }>;
 
 /**

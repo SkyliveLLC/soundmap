@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAddToMap } from '@/hooks/use-add-to-map';
@@ -14,6 +14,7 @@ import {
 } from '@/hooks/use-measurement';
 import type { NoiseSummary } from '@/lib/acoustics';
 import { SESSION_SEC, type Measurement } from '@/lib/measurement';
+import { VENUE_KIND_LABEL } from '@/lib/venues';
 import { usePalette, type Palette } from '@/theme';
 
 export default function MeasureScreen() {
@@ -99,12 +100,7 @@ function Body({ state, colors }: { state: MeasurementState; colors: Palette }) {
       );
     }
     case 'done':
-      return (
-        <>
-          <Summary summary={state.summary} colors={colors} />
-          <AddToMap reading={state} colors={colors} />
-        </>
-      );
+      return <Done reading={state} colors={colors} />;
     case 'denied':
       return (
         <Caption colors={colors}>
@@ -125,7 +121,18 @@ function Readout({ value, colors }: { value: number | null; colors: Palette }) {
   );
 }
 
-function Summary({ summary, colors }: { summary: NoiseSummary; colors: Palette }) {
+function Done({ reading, colors }: { reading: Pick<Measurement, 'summary' | 'calibration'>; colors: Palette }) {
+  const addToMap = useAddToMap(reading);
+  return (
+    <>
+      {/* The venue list needs the room the detailed stats take. */}
+      <Summary summary={reading.summary} detailed={addToMap.state.status !== 'choosing'} colors={colors} />
+      <AddToMap {...addToMap} colors={colors} />
+    </>
+  );
+}
+
+function Summary({ summary, detailed, colors }: { summary: NoiseSummary; detailed: boolean; colors: Palette }) {
   const stats = [
     { label: 'Loud moments', detail: 'L10', value: summary.l10 },
     { label: 'Background', detail: 'L90', value: summary.l90 },
@@ -136,21 +143,22 @@ function Summary({ summary, colors }: { summary: NoiseSummary; colors: Palette }
     <>
       <Readout value={summary.laeq} colors={colors} />
       <Caption colors={colors}>Average (LAeq) over {Math.round(summary.durationSec)} s</Caption>
-      <View style={styles.grid}>
-        {stats.map((stat) => (
-          <View key={stat.detail} style={[styles.stat, { borderColor: colors.track }]}>
-            <Text style={[styles.statValue, { color: colors.ink }]}>{stat.value.toFixed(1)}</Text>
-            <Text style={[styles.statLabel, { color: colors.ink }]}>{stat.label}</Text>
-            <Text style={[styles.statDetail, { color: colors.muted }]}>{stat.detail}</Text>
-          </View>
-        ))}
-      </View>
+      {detailed && (
+        <View style={styles.grid}>
+          {stats.map((stat) => (
+            <View key={stat.detail} style={[styles.stat, { borderColor: colors.track }]}>
+              <Text style={[styles.statValue, { color: colors.ink }]}>{stat.value.toFixed(1)}</Text>
+              <Text style={[styles.statLabel, { color: colors.ink }]}>{stat.label}</Text>
+              <Text style={[styles.statDetail, { color: colors.muted }]}>{stat.detail}</Text>
+            </View>
+          ))}
+        </View>
+      )}
     </>
   );
 }
 
-function AddToMap({ reading, colors }: { reading: Pick<Measurement, 'summary' | 'calibration'>; colors: Palette }) {
-  const { state, add } = useAddToMap(reading);
+function AddToMap({ state, add, choose, colors }: ReturnType<typeof useAddToMap> & { colors: Palette }) {
   switch (state.status) {
     case 'idle':
     case 'locating':
@@ -173,15 +181,53 @@ function AddToMap({ reading, colors }: { reading: Pick<Measurement, 'summary' | 
           </Pressable>
         </View>
       );
-    case 'saved':
+    case 'choosing':
+      return (
+        <View>
+          <Caption colors={colors}>Were you at one of these? Its hour by hour loudness gets your reading.</Caption>
+          <ScrollView style={styles.venues} contentContainerStyle={styles.venueList}>
+            {state.venues.map((venue) => (
+              <Pressable
+                key={venue.osmId}
+                onPress={() => choose(venue)}
+                style={({ pressed }) => [styles.venue, { borderColor: colors.track }, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={[styles.venueName, { color: colors.ink }]} numberOfLines={1}>
+                  {venue.name}
+                </Text>
+                <Text style={[styles.venueKind, { color: colors.muted }]}>{VENUE_KIND_LABEL[venue.kind]}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <Pressable onPress={() => choose(null)} style={styles.secondaryButton}>
+            <Text style={[styles.secondaryLabel, { color: colors.accent }]}>Not at any of these</Text>
+          </Pressable>
+        </View>
+      );
+    case 'saving':
+      return (
+        <View style={styles.queued}>
+          <Caption colors={colors}>Adding to the map…</Caption>
+        </View>
+      );
+    case 'saved': {
+      const { cell, venue } = state;
       return (
         <Pressable
-          onPress={() => router.navigate({ pathname: '/', params: { cell: state.cell } })}
+          onPress={() =>
+            router.navigate({
+              pathname: '/',
+              params: venue ? { venue: venue.osmId, cell: undefined } : { cell, venue: undefined },
+            })
+          }
           style={({ pressed }) => [styles.button, { borderWidth: 1, borderColor: colors.accent }, pressed && { opacity: 0.7 }]}
         >
-          <Text style={[styles.buttonLabel, { color: colors.accent }]}>Added to map · View</Text>
+          <Text style={[styles.buttonLabel, { color: colors.accent }]} numberOfLines={1}>
+            {venue ? `Added to ${venue.name} · View` : 'Added to map · View'}
+          </Text>
         </Pressable>
       );
+    }
     case 'queued':
       return (
         <View style={styles.queued}>
@@ -237,4 +283,10 @@ const styles = StyleSheet.create({
   queued: { height: 56, justifyContent: 'center' },
   secondaryButton: { height: 44, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   secondaryLabel: { fontSize: 16, fontWeight: '500' },
+  // About four rows, so the measurement above stays in view.
+  venues: { maxHeight: 248, marginTop: 12 },
+  venueList: { gap: 8 },
+  venue: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 10, gap: 2 },
+  venueName: { fontSize: 16, fontWeight: '500' },
+  venueKind: { fontSize: 13 },
 });

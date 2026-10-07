@@ -2,12 +2,16 @@ import { getAuthUserId } from '@convex-dev/auth/server';
 import { ConvexError, v } from 'convex/values';
 
 import { mutation, query } from './_generated/server';
-import { calibration } from './schema';
+import { calibration } from './validators';
 import { energyOf, levelOf } from '../src/lib/acoustics.ts';
 import { MAX_REGIONS, REGION_RESOLUTION, isRegion, regionRange, type CellAggregate } from '../src/lib/cells.ts';
 import { rejectionReason } from '../src/lib/measurement.ts';
+import { recordVisit } from './venues';
 
-/** Adds one reading to the shared map. Safe to retry: a clientId already seen from this user is a no-op. */
+/**
+ * Adds one reading to the shared map, and to its venue's hour when it has one.
+ * Safe to retry: a clientId already seen from this user is a no-op.
+ */
 export const add = mutation({
   args: {
     clientId: v.string(),
@@ -15,6 +19,7 @@ export const add = mutation({
     at: v.number(),
     summary: v.object({ laeq: v.number(), lamax: v.number(), l10: v.number(), l90: v.number(), durationSec: v.number() }),
     calibration,
+    visit: v.optional(v.object({ osmId: v.string(), hour: v.number() })),
   },
   handler: async (ctx, measurement) => {
     const userId = await getAuthUserId(ctx);
@@ -27,8 +32,10 @@ export const add = mutation({
     const reason = rejectionReason(measurement, Date.now());
     if (reason) throw new ConvexError(reason);
 
-    const { clientId, cell, at, summary, calibration } = measurement;
-    await ctx.db.insert('measurements', { userId, clientId, cell, at, ...summary, calibration });
+    const { clientId, cell, at, summary, calibration, visit } = measurement;
+    // A visit that doesn't check out is dropped. The reading still counts for its block.
+    const venueId = visit && (await recordVisit(ctx, cell, visit, summary.laeq));
+    await ctx.db.insert('measurements', { userId, clientId, cell, at, ...summary, calibration, ...(venueId && { venueId, hour: visit?.hour }) });
     const energy = energyOf(summary.laeq);
     const row = await ctx.db
       .query('cells')
