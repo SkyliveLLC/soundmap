@@ -18,6 +18,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../../convex/_generated/api';
+import { VenueDetail } from '@/components/venue-detail';
 import { MAX_REGIONS, cellAt, cellPolygon, cellsToGeoJSON, regionsIn, type CellAggregate } from '@/lib/cells';
 import { LOUDNESS_COLOR, loudnessBand, type LoudnessBand } from '@/lib/loudness';
 import {
@@ -31,6 +32,7 @@ import {
   type StreetLevel,
 } from '@/lib/street-noise';
 import { streetNoiseReader } from '@/lib/street-noise-tiles';
+import { venuesToGeoJSON } from '@/lib/venues';
 import { usePalette, type Palette } from '@/theme';
 
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/positron';
@@ -38,6 +40,7 @@ const MAP_STYLE = 'https://tiles.openfreemap.org/styles/positron';
 const CONTINENTAL_US: InitialViewState = { center: [-98.6, 39.8], zoom: 3 };
 const LOCAL_ZOOM = 13;
 const CELL_ZOOM = 15;
+const VENUE_ZOOM = 16;
 // Measured hexagons are blocks, too small to see further out, so the map only loads them from here in.
 const MEASURED_ZOOM = 10;
 // Until the tiles answer, a card shows only what was measured.
@@ -48,16 +51,20 @@ export default function MapScreen() {
   const colors = usePalette();
   const insets = useSafeAreaInsets();
   const camera = useRef<CameraRef>(null);
-  // The selected cell lives in the route so "Added to map · View" can open the map on it.
-  const { cell: selectedCell } = useLocalSearchParams<{ cell?: string }>();
+  // The selected cell or venue (an OpenStreetMap id) lives in the route so "Added to map · View" can open the map on it.
+  const { cell: selectedCell, venue: selectedVenue } = useLocalSearchParams<{ cell?: string; venue?: string }>();
   const [initialCell] = useState(selectedCell);
+  const [initialVenue] = useState(selectedVenue);
   const [view, setView] = useState<Pick<ViewState, 'zoom' | 'bounds'>>();
   const aggregates = useMeasuredCells(view);
+  // Every measured venue, kept live by Convex. Undefined until the first result arrives.
+  const venues = useQuery(api.venues.list);
   // Street noise of the selected cell, read from the tiles.
   const [street, setStreet] = useState<{ cell: string; level: StreetLevel }>();
   const [locationGranted, setLocationGranted] = useState(false);
-  // The cell the last map tap selected. Only selections from elsewhere ("View") move the camera.
-  const tappedCell = useRef<string | undefined>(undefined);
+  // The cell or venue the last map tap selected. Only selections from elsewhere ("View") move the camera.
+  const tappedSelection = useRef<string | undefined>(undefined);
+  const venue = venues?.find(({ osmId }) => osmId === selectedVenue);
 
   // "Add to map" may have just granted location. Only reads the permission: the prompt belongs to "Add to map".
   useFocusEffect(
@@ -66,9 +73,9 @@ export default function MapScreen() {
     }, []),
   );
 
-  // Opens where you are when the phone already knows it, unless the map was opened on a cell.
+  // Opens where you are when the phone already knows it, unless the map was opened on a cell or venue.
   useEffect(() => {
-    if (initialCell) return;
+    if (initialCell || initialVenue) return;
     getForegroundPermissionsAsync()
       .then(({ granted }) => (granted ? getLastKnownPositionAsync() : null))
       .then((position) => {
@@ -76,15 +83,20 @@ export default function MapScreen() {
         const { longitude, latitude } = position.coords;
         camera.current?.jumpTo({ center: [longitude, latitude], zoom: LOCAL_ZOOM });
       });
-  }, [initialCell]);
+  }, [initialCell, initialVenue]);
 
+  // A venue just measured may not be in `venues` yet, so this runs again once its position arrives.
+  const venueLatitude = venue?.latitude;
+  const venueLongitude = venue?.longitude;
   useEffect(() => {
-    const fromTap = selectedCell === tappedCell.current;
-    tappedCell.current = undefined;
-    if (!selectedCell || fromTap) return;
-    const [latitude, longitude] = cellToLatLng(selectedCell);
-    camera.current?.flyTo({ center: [longitude, latitude], zoom: CELL_ZOOM, duration: 800 });
-  }, [selectedCell]);
+    const selection = selectedVenue ?? selectedCell;
+    const fromTap = selection === tappedSelection.current;
+    tappedSelection.current = undefined;
+    if (!selection || fromTap) return;
+    const [latitude, longitude] = selectedVenue ? [venueLatitude, venueLongitude] : cellToLatLng(selection);
+    if (latitude === undefined || longitude === undefined) return;
+    camera.current?.flyTo({ center: [longitude, latitude], zoom: selectedVenue ? VENUE_ZOOM : CELL_ZOOM, duration: 800 });
+  }, [selectedCell, selectedVenue, venueLatitude, venueLongitude]);
 
   // A failed read (offline) leaves the street noise unknown, so the card shows only what was measured.
   useEffect(() => {
@@ -104,7 +116,7 @@ export default function MapScreen() {
       aggregates?.find((aggregate) => aggregate.cell === cell),
       level ?? UNKNOWN_STREET,
     );
-  const reading = selectedCell ? readingAt(selectedCell) : null;
+  const reading = selectedCell && !venue ? readingAt(selectedCell) : null;
 
   return (
     <View style={styles.screen}>
@@ -123,8 +135,8 @@ export default function MapScreen() {
           const cell = cellAt(latitude, longitude);
           const level = (view?.zoom ?? 0) >= BLOCK_ZOOM ? await readStreet(cell).catch(() => undefined) : undefined;
           if (level) setStreet({ cell, level });
-          tappedCell.current = readingAt(cell, level) ? cell : undefined;
-          router.setParams({ cell: tappedCell.current });
+          tappedSelection.current = readingAt(cell, level) ? cell : undefined;
+          router.setParams({ cell: tappedSelection.current, venue: undefined });
         }}
         onRegionDidChange={({ nativeEvent: { zoom, bounds } }) => setView({ zoom, bounds })}
       >
@@ -151,9 +163,38 @@ export default function MapScreen() {
             />
           </GeoJSONSource>
         )}
+        <GeoJSONSource
+          id="venues"
+          data={venuesToGeoJSON(venues ?? [])}
+          onPress={(event) => {
+            const osmId = event.nativeEvent.features[0]?.properties?.osmId;
+            if (typeof osmId !== 'string') return;
+            // Without this the map's own onPress would select the block under the venue instead.
+            event.stopPropagation();
+            tappedSelection.current = osmId;
+            router.setParams({ venue: osmId, cell: undefined });
+          }}
+        >
+          <Layer
+            id="venue-dot"
+            type="circle"
+            // Like measured hexagons, venues are too small to tell apart further out.
+            minzoom={MEASURED_ZOOM}
+            paint={{
+              'circle-color': LOUDNESS_COLOR,
+              'circle-radius': 7,
+              'circle-stroke-color': colors.ink,
+              'circle-stroke-width': ['case', ['==', ['get', 'osmId'], selectedVenue ?? ''], 3, 1.5],
+            }}
+          />
+        </GeoJSONSource>
         {locationGranted && <NativeUserLocation />}
       </Map>
-      {reading ? (
+      {venue ? (
+        <View style={[styles.card, { backgroundColor: colors.background }]}>
+          <VenueDetail venue={venue} colors={colors} />
+        </View>
+      ) : reading ? (
         <CellCard reading={reading} colors={colors} />
       ) : (
         aggregates?.length === 0 && (

@@ -9,7 +9,7 @@ export const resetMap = internalMutation({
   args: {},
   handler: async (ctx) => {
     if (process.env.SOUNDMAP_ALLOW_RESET !== 'true') throw new Error('resetMap is disabled on this deployment');
-    for (const table of ['measurements', 'cells'] as const) {
+    for (const table of ['measurements', 'cells', 'venues'] as const) {
       for (const row of await ctx.db.query(table).collect()) await ctx.db.delete(row._id);
     }
   },

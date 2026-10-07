@@ -4,6 +4,7 @@ import { isValidCell } from 'h3-js';
 import type { NoiseSummary } from './acoustics.ts';
 import { UNCALIBRATED_OFFSET_DB } from './calibration.ts';
 import type { Measurement } from './measurement.ts';
+import { parseVisit } from './venues.ts';
 
 // Readings wait here until the server has them, so one taken offline survives an app restart.
 // Rows leave once the server answers, accepted or refused.
@@ -35,16 +36,23 @@ export async function createSchema(db: SQLiteDatabase) {
       `),
     );
   }
+  if (version < 2) {
+    // A queued visit is its JSON. Readings queued before venues have none.
+    await db.withTransactionAsync(() =>
+      db.execAsync(`
+        ALTER TABLE outbox ADD COLUMN visit TEXT;
+        PRAGMA user_version = 2;
+      `),
+    );
+  }
 }
 
 /** Queues a reading and returns it with the clientId the server will deduplicate on. */
-export async function enqueue(
-  db: SQLiteDatabase,
-  { at, cell, summary, calibration }: Omit<Measurement, 'clientId'>,
-): Promise<Measurement> {
+export async function enqueue(db: SQLiteDatabase, measurement: Omit<Measurement, 'clientId'>): Promise<Measurement> {
+  const { at, cell, summary, calibration, visit } = measurement;
   const row = await db.getFirstAsync<{ client_id: string }>(
-    `INSERT INTO outbox (at, cell, laeq, lamax, l10, l90, duration_sec, model, offset_db, calibration_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING client_id`,
+    `INSERT INTO outbox (at, cell, laeq, lamax, l10, l90, duration_sec, model, offset_db, calibration_id, visit)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING client_id`,
     at,
     cell,
     summary.laeq,
@@ -55,9 +63,10 @@ export async function enqueue(
     calibration.model,
     calibration.offsetDb,
     calibration.id,
+    visit ? JSON.stringify(visit) : null,
   );
   if (!row) throw new Error('outbox insert returned no row');
-  return { clientId: row.client_id, at, cell, summary, calibration };
+  return { clientId: row.client_id, ...measurement };
 }
 
 export async function listQueued(db: SQLiteDatabase): Promise<Measurement[]> {
@@ -74,7 +83,7 @@ export async function dequeue(db: SQLiteDatabase, clientId: string) {
 }
 
 function parseRow(row: Record<string, unknown>): Measurement | null {
-  const { client_id, at, cell, laeq, lamax, l10, l90, duration_sec, model, offset_db, calibration_id } = row;
+  const { client_id, at, cell, laeq, lamax, l10, l90, duration_sec, model, offset_db, calibration_id, visit } = row;
   if (typeof client_id !== 'string' || typeof cell !== 'string' || !isValidCell(cell)) return null;
   if (
     typeof at !== 'number' ||
@@ -90,5 +99,8 @@ function parseRow(row: Record<string, unknown>): Measurement | null {
     return null;
   }
   const summary: NoiseSummary = { laeq, lamax, l10, l90, durationSec: duration_sec };
-  return { clientId: client_id, at, cell, summary, calibration: { model, offsetDb: offset_db, id: calibration_id } };
+  const calibration = { model, offsetDb: offset_db, id: calibration_id };
+  // A visit this version can't read is dropped. The reading still counts for its block.
+  const parsedVisit = typeof visit === 'string' ? parseVisit(visit) : null;
+  return { clientId: client_id, at, cell, summary, calibration, ...(parsedVisit && { visit: parsedVisit }) };
 }
