@@ -35,7 +35,7 @@ export const add = mutation({
     const { clientId, cell, at, summary, calibration, visit } = measurement;
     // A visit that doesn't check out is dropped. The reading still counts for its block.
     const venueId = visit && (await recordVisit(ctx, cell, visit, summary.laeq));
-    await ctx.db.insert('measurements', { userId, clientId, cell, at, ...summary, calibration, venueId, hour: visit?.hour });
+    await ctx.db.insert('measurements', { userId, clientId, cell, at, ...summary, calibration, ...(venueId && { venueId, hour: visit?.hour }) });
     const energy = energyOf(summary.laeq);
     const row = await ctx.db
       .query('cells')
