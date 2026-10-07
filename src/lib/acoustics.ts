@@ -1,14 +1,3 @@
-/**
- * dB SPL = A-weighted dBFS + CALIBRATION_OFFSET_DB.
- *
- * Placeholder, not a measurement. Phone MEMS microphones are typically specified
- * around -26 dBFS for a 94 dB SPL tone, which puts digital full scale near 120 dB SPL.
- * Real offsets differ per device model (mic part, OS input gain) and will come from
- * measuring each model against a reference sound level meter. Until then every
- * reading is uncalibrated and can be off by several dB in either direction.
- */
-export const CALIBRATION_OFFSET_DB = 120;
-
 // Both shapes so that prepending or appending to any array proves non-emptiness.
 export type NonEmptyArray<T> = readonly [T, ...T[]] | readonly [...T[], T];
 

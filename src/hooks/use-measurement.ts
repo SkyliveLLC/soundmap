@@ -1,18 +1,32 @@
+import * as Device from 'expo-device';
 import { useEffect, useReducer } from 'react';
+import { Platform } from 'react-native';
 
 import SoundMeter from '../../modules/sound-meter/src/SoundMeterModule';
-import { CALIBRATION_OFFSET_DB, summarize, type NonEmptyArray, type NoiseSummary } from '@/lib/acoustics';
+import { summarize, type NonEmptyArray, type NoiseSummary } from '@/lib/acoustics';
+import { calibrationFor, type Calibration } from '@/lib/calibration';
 import { SESSION_SEC } from '@/lib/measurement';
 
 // Matches the 125 ms window LevelMeter uses on both platforms.
 export const FRAME_SEC = 0.125;
 export const SESSION_FRAMES = SESSION_SEC / FRAME_SEC;
 
+// Simulators and emulators get no real phone's offset: their model id is the host's architecture,
+// and the iOS Simulator's input is synthetic.
+function deviceModel(): string {
+  if (!Device.isDevice) return 'Simulator';
+  const model = Platform.OS === 'ios' ? Device.modelId : [Device.manufacturer, Device.modelName].filter(Boolean).join(' ');
+  return typeof model === 'string' && model !== '' ? model : 'Unknown';
+}
+
+/** This phone's calibration. Every level the hook reports, and every summary, is in dB SPL through it. */
+export const deviceCalibration: Calibration = calibrationFor(deviceModel());
+
 export type MeasurementState =
   | { status: 'idle' }
   | { status: 'denied' }
   | { status: 'measuring'; levels: readonly number[] }
-  | { status: 'done'; summary: NoiseSummary }
+  | { status: 'done'; summary: NoiseSummary; calibration: Calibration }
   | { status: 'failed'; reason: FailureReason };
 
 export type FailureReason = 'no-input' | 'unexpected';
@@ -41,7 +55,7 @@ function reducer(state: MeasurementState, action: Action): MeasurementState {
       const levels: NonEmptyArray<number> = [...state.levels, action.dbSpl];
       return levels.length < SESSION_FRAMES
         ? { status: 'measuring', levels }
-        : { status: 'done', summary: summarize(levels, FRAME_SEC) };
+        : { status: 'done', summary: summarize(levels, FRAME_SEC), calibration: deviceCalibration };
     }
   }
 }
@@ -64,7 +78,7 @@ export function useMeasurement() {
     if (!measuring) return;
     let active = true;
     const subscription = SoundMeter.addListener('onLevel', ({ dbfs }) => {
-      dispatch({ type: 'level', dbSpl: dbfs + CALIBRATION_OFFSET_DB });
+      dispatch({ type: 'level', dbSpl: dbfs + deviceCalibration.offsetDb });
     });
 
     (async () => {
