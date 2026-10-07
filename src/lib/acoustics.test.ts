@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { summarize } from './acoustics.ts';
+import { energyAverage, energyOf, levelOf, summarize } from './acoustics.ts';
 
 const FRAME_SEC = 0.125;
 
@@ -44,4 +44,10 @@ test('duration counts frames times frame length', () => {
 
 test('a single frame summarizes to that level with no NaN', () => {
   assert.deepEqual(summarize([63], FRAME_SEC), { laeq: 63, lamax: 63, l10: 63, l90: 63, durationSec: FRAME_SEC });
+});
+
+test('a running energy total averages like energyAverage', () => {
+  const levels = [48, 61.5, 73] as const;
+  const total = levels.reduce((sum, level) => sum + energyOf(level), 0);
+  assertClose(levelOf(total / levels.length), energyAverage(levels), 1e-9);
 });

@@ -41,8 +41,17 @@ export function summarize(levelsDbSpl: NonEmptyArray<number>, frameSec: number):
  * 60 and 80 dB average to about 77 dB, not 70.
  */
 export function energyAverage(levelsDb: NonEmptyArray<number>): number {
-  const meanEnergy = levelsDb.reduce((sum, level) => sum + 10 ** (level / 10), 0) / levelsDb.length;
-  return 10 * Math.log10(meanEnergy);
+  return levelOf(levelsDb.reduce((sum, level) => sum + energyOf(level), 0) / levelsDb.length);
+}
+
+/** Relative sound energy of a decibel level. Energies can be summed and averaged; decibels can't. */
+export function energyOf(levelDb: number): number {
+  return 10 ** (levelDb / 10);
+}
+
+/** The decibel level of a relative sound energy, the inverse of `energyOf`. */
+export function levelOf(energy: number): number {
+  return 10 * Math.log10(energy);
 }
 
 // The level exceeded for `fraction` of the time is the (1 - fraction) percentile,
