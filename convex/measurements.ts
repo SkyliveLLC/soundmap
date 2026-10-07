@@ -2,6 +2,7 @@ import { getAuthUserId } from '@convex-dev/auth/server';
 import { ConvexError, v } from 'convex/values';
 
 import { mutation, query } from './_generated/server';
+import { calibration } from './schema';
 import { energyOf, levelOf } from '../src/lib/acoustics.ts';
 import type { CellAggregate } from '../src/lib/cells.ts';
 import { rejectionReason } from '../src/lib/measurement.ts';
@@ -13,6 +14,7 @@ export const add = mutation({
     cell: v.string(),
     at: v.number(),
     summary: v.object({ laeq: v.number(), lamax: v.number(), l10: v.number(), l90: v.number(), durationSec: v.number() }),
+    calibration,
   },
   handler: async (ctx, measurement) => {
     const userId = await getAuthUserId(ctx);
@@ -25,8 +27,8 @@ export const add = mutation({
     const reason = rejectionReason(measurement, Date.now());
     if (reason) throw new ConvexError(reason);
 
-    const { clientId, cell, at, summary } = measurement;
-    await ctx.db.insert('measurements', { userId, clientId, cell, at, ...summary });
+    const { clientId, cell, at, summary, calibration } = measurement;
+    await ctx.db.insert('measurements', { userId, clientId, cell, at, ...summary, calibration });
     const energy = energyOf(summary.laeq);
     const row = await ctx.db
       .query('cells')

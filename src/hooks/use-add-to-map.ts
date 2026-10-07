@@ -4,8 +4,8 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
 
 import { useUpload } from '@/hooks/use-sync';
-import type { NoiseSummary } from '@/lib/acoustics';
 import { cellAt } from '@/lib/cells';
+import type { Measurement } from '@/lib/measurement';
 import { enqueue } from '@/lib/outbox';
 
 export type AddToMapState =
@@ -18,7 +18,7 @@ export type AddToMapState =
   | { status: 'failed' };
 
 /** Adds one finished measurement to the shared map, at the H3 cell around the current position. */
-export function useAddToMap(summary: NoiseSummary) {
+export function useAddToMap({ summary, calibration }: Pick<Measurement, 'summary' | 'calibration'>) {
   const db = useSQLiteContext();
   const convex = useConvex();
   const upload = useUpload();
@@ -35,7 +35,7 @@ export function useAddToMap(summary: NoiseSummary) {
       }
       const { coords } = await getCurrentPositionAsync({ accuracy: Accuracy.High });
       const cell = cellAt(coords.latitude, coords.longitude);
-      const measurement = await enqueue(db, { at: Date.now(), cell, summary });
+      const measurement = await enqueue(db, { at: Date.now(), cell, summary, calibration });
       // Without a user yet, the sync uploads it after sign-in. Offline, Convex sends it on reconnect.
       if (!isAuthenticated || !convex.connectionState().isWebSocketConnected) {
         if (isAuthenticated) upload(measurement).catch(() => {});

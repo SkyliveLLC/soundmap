@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAddToMap } from '@/hooks/use-add-to-map';
 import {
+  deviceCalibration,
   FRAME_SEC,
   SESSION_FRAMES,
   useMeasurement,
@@ -12,7 +13,7 @@ import {
   type MeasurementState,
 } from '@/hooks/use-measurement';
 import type { NoiseSummary } from '@/lib/acoustics';
-import { SESSION_SEC } from '@/lib/measurement';
+import { SESSION_SEC, type Measurement } from '@/lib/measurement';
 import { usePalette, type Palette } from '@/theme';
 
 export default function MeasureScreen() {
@@ -26,7 +27,9 @@ export default function MeasureScreen() {
       <View style={styles.header}>
         <Text style={[styles.brand, { color: colors.ink }]}>Soundmap</Text>
         <View style={[styles.pill, { borderColor: colors.muted }]}>
-          <Text style={[styles.pillText, { color: colors.muted }]}>UNCALIBRATED</Text>
+          <Text style={[styles.pillText, { color: colors.muted }]}>
+            {deviceCalibration.id ? 'CALIBRATED' : 'UNCALIBRATED'}
+          </Text>
         </View>
       </View>
 
@@ -99,7 +102,7 @@ function Body({ state, colors }: { state: MeasurementState; colors: Palette }) {
       return (
         <>
           <Summary summary={state.summary} colors={colors} />
-          <AddToMap summary={state.summary} colors={colors} />
+          <AddToMap reading={state} colors={colors} />
         </>
       );
     case 'denied':
@@ -146,8 +149,8 @@ function Summary({ summary, colors }: { summary: NoiseSummary; colors: Palette }
   );
 }
 
-function AddToMap({ summary, colors }: { summary: NoiseSummary; colors: Palette }) {
-  const { state, add } = useAddToMap(summary);
+function AddToMap({ reading, colors }: { reading: Pick<Measurement, 'summary' | 'calibration'>; colors: Palette }) {
+  const { state, add } = useAddToMap(reading);
   switch (state.status) {
     case 'idle':
     case 'locating':
