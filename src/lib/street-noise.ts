@@ -1,29 +1,47 @@
-import type { Feature, Polygon } from 'geojson';
-import { cellToBoundary, cellToLatLng, getResolution, isValidCell } from 'h3-js';
+import { cellToBoundary, cellToChildrenSize, cellToLatLng, cellToParent, getResolution } from 'h3-js';
 
-import { energyAverage } from './acoustics.ts';
-import { CELL_RESOLUTION, cellAt, type CellAggregate } from './cells.ts';
+import { energyAverage, energyOf, levelOf } from './acoustics.ts';
+import { CELL_RESOLUTION, cellAt, type Bounds, type CellAggregate } from './cells.ts';
 
-/** [west, south, east, north] in degrees: the area the assets were clipped to. */
-export type Extent = readonly [west: number, south: number, east: number, north: number];
-
-/** NTNM omits pixels quieter than this, so inside the extent "no pixels" means quiet, not unknown. */
+/** NTNM omits pixels quieter than this, so inside the modeled area "no pixels" means quiet, not unknown. */
 export const DOT_FLOOR_DB = 45;
+
+/** The NTNM release the hosted tiles hold. Bump it together with STREET_NOISE_TILES. */
+export const STREET_NOISE_RELEASE = '2022';
+
+/**
+ * US DOT road noise for the 50 states and DC as one PMTiles archive (built by scripts/street-noise.ts),
+ * which MapLibre reads with HTTP range requests. EXPO_PUBLIC_STREET_NOISE_TILES points a dev build elsewhere.
+ */
+export const STREET_NOISE_TILES = process.env.EXPO_PUBLIC_STREET_NOISE_TILES ?? 'R2_URL_PENDING';
+
+/** Tile layer of hexagons, each with an `laeq` (dBA, 24 h). Only hexagons at or above DOT_FLOOR_DB exist. */
+export const NOISE_LAYER = 'noise';
+/** Tile layer of the area NTNM models: the 50 states and DC. Only in block tiles, and never drawn. */
+export const COVERAGE_LAYER = 'coverage';
+
+/** Blocks are drawn, and answer taps, from this zoom in. Tiles stop here; MapLibre overzooms them. */
+export const BLOCK_ZOOM = 12;
+
+/**
+ * The H3 resolution drawn at each zoom, so a hexagon is always a few pixels across. Blocks (resolution
+ * 10) are the DOT pixels averaged; every coarser hexagon is an area average of the blocks inside it.
+ */
+export const NOISE_ZOOMS = [
+  { resolution: 5, minzoom: 3, maxzoom: 5 },
+  { resolution: 6, minzoom: 6, maxzoom: 7 },
+  { resolution: 7, minzoom: 8, maxzoom: 8 },
+  { resolution: 8, minzoom: 9, maxzoom: 9 },
+  { resolution: 9, minzoom: 10, maxzoom: BLOCK_ZOOM - 1 },
+  { resolution: CELL_RESOLUTION, minzoom: BLOCK_ZOOM, maxzoom: BLOCK_ZOOM },
+] as const;
 
 /** Modeled road noise for one H3 cell. Three states because "no number" means two different things. */
 export type StreetLevel = { kind: 'modeled'; laeq24h: number } | { kind: 'below-floor' } | { kind: 'not-covered' };
 
-/** US DOT National Transportation Noise Map road noise, aggregated to H3 cells. Never mutated. */
-export type StreetNoise = {
-  readonly release: string;
-  readonly extent: Extent;
-  /** H3 res-10 cell -> energy-averaged LAeq 24 h. Every value >= DOT_FLOOR_DB. */
-  readonly levels: ReadonlyMap<string, number>;
-};
-
 /**
  * Everything the card shows for one cell. Measured and modeled values sit side by side, never combined.
- * An unmeasured cell outside the extent has nothing to say, so it is not representable.
+ * An unmeasured cell outside the modeled area has nothing to say, so it is not representable.
  */
 export type CellReading =
   | { cell: string; measured: CellAggregate; street: StreetLevel }
@@ -31,56 +49,8 @@ export type CellReading =
 
 export type Pixel = { latitude: number; longitude: number; db: number };
 
-// levels.json on disk. Cells are sorted and rounded to 0.1 dB so a rerun is byte-identical.
-type LevelsFile = { release: string; extent: Extent; cells: Record<string, number> };
-
-/** Validates levels.json. Throws on a malformed asset: it is a build artifact, so a bad one is a pipeline bug. */
-export function parseStreetNoise(raw: unknown): StreetNoise {
-  if (typeof raw !== 'object' || raw === null) throw new Error('street noise: not an object');
-  const { release, extent, cells } = raw as Partial<Record<keyof LevelsFile, unknown>>;
-  if (typeof release !== 'string' || release === '') throw new Error('street noise: missing release');
-  if (typeof cells !== 'object' || cells === null) throw new Error('street noise: missing cells');
-  const levels = new Map<string, number>();
-  for (const [cell, laeq] of Object.entries(cells)) {
-    if (!isValidCell(cell) || getResolution(cell) !== CELL_RESOLUTION) throw new Error(`street noise: bad cell ${cell}`);
-    if (typeof laeq !== 'number' || !Number.isFinite(laeq) || laeq < DOT_FLOOR_DB) {
-      throw new Error(`street noise: bad level for ${cell}`);
-    }
-    levels.set(cell, laeq);
-  }
-  return { release, extent: parseExtent(extent), levels };
-}
-
-function parseExtent(raw: unknown): Extent {
-  if (!Array.isArray(raw) || raw.length !== 4) throw new Error('street noise: extent is not [w, s, e, n]');
-  const [west, south, east, north]: unknown[] = raw;
-  if (
-    typeof west !== 'number' ||
-    typeof south !== 'number' ||
-    typeof east !== 'number' ||
-    typeof north !== 'number' ||
-    !(-180 <= west && west < east && east <= 180 && -90 <= south && south < north && north <= 90)
-  ) {
-    throw new Error('street noise: extent is not a valid [w, s, e, n] box');
-  }
-  return [west, south, east, north];
-}
-
-function contains([west, south, east, north]: Extent, latitude: number, longitude: number): boolean {
-  return west <= longitude && longitude <= east && south <= latitude && latitude <= north;
-}
-
-/** Modeled if the cell has a level; else below-floor if its center is inside the extent; else not-covered. */
-export function streetLevelAt(noise: StreetNoise, cell: string): StreetLevel {
-  const laeq24h = noise.levels.get(cell);
-  if (laeq24h !== undefined) return { kind: 'modeled', laeq24h };
-  const [latitude, longitude] = cellToLatLng(cell);
-  return contains(noise.extent, latitude, longitude) ? { kind: 'below-floor' } : { kind: 'not-covered' };
-}
-
-/** Pairs a cell's measurements with its street noise. Null only for an unmeasured cell outside the extent. */
-export function readCell(cell: string, measured: CellAggregate | undefined, noise: StreetNoise): CellReading | null {
-  const street = streetLevelAt(noise, cell);
+/** Pairs a cell's measurements with its street noise. Null only for an unmeasured cell outside the modeled area. */
+export function readCell(cell: string, measured: CellAggregate | undefined, street: StreetLevel): CellReading | null {
   if (measured) return { cell, measured, street };
   if (street.kind === 'not-covered') return null;
   return { cell, measured: null, street };
@@ -96,10 +66,11 @@ export function parsePixelLine(line: string): Pixel | null {
 }
 
 /**
- * Energy average of the pixels present in each cell. Pixels just outside the extent still count:
- * the source clip covers the extent's corners, so edge cells average all of their pixels.
+ * Energy average of the pixels present in each block whose center lies in `window` (west and south
+ * inclusive), so windows that tile the map own each block exactly once. Feed it pixels from a little
+ * past the window, or blocks on its edge average only some of theirs.
  */
-export function aggregatePixels(pixels: Iterable<Pixel>, source: { release: string; extent: Extent }): StreetNoise {
+export function aggregatePixels(pixels: Iterable<Pixel>, [west, south, east, north]: Bounds): Map<string, number> {
   const dbByCell = new Map<string, [number, ...number[]]>();
   for (const { latitude, longitude, db } of pixels) {
     const cell = cellAt(latitude, longitude);
@@ -107,43 +78,66 @@ export function aggregatePixels(pixels: Iterable<Pixel>, source: { release: stri
     if (levels) levels.push(db);
     else dbByCell.set(cell, [db]);
   }
-  const levels = new Map(Array.from(dbByCell, ([cell, dbs]) => [cell, energyAverage(dbs)] as const));
-  return { ...source, levels };
-}
-
-/** levels.json text: sorted cells, 0.1 dB. Byte-identical for identical input. */
-export function serializeLevels(noise: StreetNoise): string {
-  const file: LevelsFile = {
-    release: noise.release,
-    extent: noise.extent,
-    cells: Object.fromEntries(sortedLevels(noise)),
-  };
-  return `${JSON.stringify(file, null, 1)}\n`;
+  const levels = new Map<string, number>();
+  for (const [cell, dbs] of dbByCell) {
+    const [latitude, longitude] = cellToLatLng(cell);
+    if (west <= longitude && longitude < east && south <= latitude && latitude < north) {
+      levels.set(cell, energyAverage(dbs));
+    }
+  }
+  return levels;
 }
 
 /**
- * cells.geojson text from the same levels: one hexagon per line, properties `{ cell, laeq }`.
- * MapLibre colors it with `LOUDNESS_COLOR`, so the file stores no colors.
+ * Area hexagons for every coarser resolution in NOISE_ZOOMS: the energy of their blocks spread over the
+ * whole area, counting blocks below the floor as silent. It is a lower bound that keeps a highway
+ * through farmland quieter than a downtown. Blocks must come sorted by index, which groups every
+ * area's blocks together. Areas that average below the floor are left out, like quiet blocks.
  */
-export function serializeCells(noise: StreetNoise): string {
-  const features = sortedLevels(noise).map(([cell, laeq]): Feature<Polygon, { cell: string; laeq: number }> => ({
+export async function* areaLevels(
+  blocks: AsyncIterable<readonly [cell: string, laeq: number]> | Iterable<readonly [cell: string, laeq: number]>,
+): AsyncGenerator<[string, number]> {
+  const areas = NOISE_ZOOMS.filter(({ resolution }) => resolution < CELL_RESOLUTION).map(({ resolution }) => ({
+    resolution,
+    cell: '',
+    energy: 0,
+  }));
+  function* flush(area: (typeof areas)[number]): Generator<[string, number]> {
+    if (!area.cell) return;
+    const laeq = levelOf(area.energy / cellToChildrenSize(area.cell, CELL_RESOLUTION));
+    if (laeq >= DOT_FLOOR_DB) yield [area.cell, laeq];
+  }
+  for await (const [block, laeq] of blocks) {
+    for (const area of areas) {
+      const cell = cellToParent(block, area.resolution);
+      if (cell !== area.cell) {
+        yield* flush(area);
+        area.cell = cell;
+        area.energy = 0;
+      }
+      area.energy += energyOf(laeq);
+    }
+  }
+  for (const area of areas) yield* flush(area);
+}
+
+/** One GeoJSONSeq line for tippecanoe: the hexagon, its level at 0.1 dB, and the zooms that draw it. */
+export function noiseFeature(cell: string, laeq: number): string {
+  const resolution = getResolution(cell);
+  const zooms = NOISE_ZOOMS.find((zoom) => zoom.resolution === resolution);
+  if (!zooms) throw new Error(`street noise: no zooms for resolution ${resolution}`);
+  return JSON.stringify({
     type: 'Feature',
+    tippecanoe: { layer: NOISE_LAYER, minzoom: zooms.minzoom, maxzoom: zooms.maxzoom },
     geometry: {
       type: 'Polygon',
       coordinates: [cellToBoundary(cell, true).map(([lng, lat]) => [roundTo(lng, 6), roundTo(lat, 6)])],
     },
-    properties: { cell, laeq },
-  }));
-  return `{"type":"FeatureCollection","features":[\n${features.map((feature) => JSON.stringify(feature)).join(',\n')}\n]}\n`;
+    properties: { laeq: roundTo(laeq, 1) },
+  });
 }
 
-function sortedLevels({ levels }: StreetNoise): [string, number][] {
-  return Array.from(levels, ([cell, laeq]): [string, number] => [cell, roundTo(laeq, 1)]).sort(([a], [b]) =>
-    a < b ? -1 : a > b ? 1 : 0,
-  );
-}
-
-function roundTo(value: number, decimals: number): number {
+export function roundTo(value: number, decimals: number): number {
   const scale = 10 ** decimals;
   return Math.round(value * scale) / scale;
 }
