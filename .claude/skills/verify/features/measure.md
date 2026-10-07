@@ -25,7 +25,7 @@ Preconditions:
 - **Open the tab.** Run `sm ad press 'label="Measure, tab, 2 of 2"' --settle`. The diff shows `Soundmap`, `UNCALIBRATED`, `—`, `dBA`, and `Start measuring`.
 - **Start.** Run `sm tap "Start measuring"`. On first run, a `Allow “soundmap” to access your microphone?` prompt appears. Run `sm ad alert accept`. Within 2 s, `snapshot -i` shows a numeric readout, `Listening · N of 30 s`, and `Cancel`.
 - **Finish.** Run `sm ad wait text "Measure again" 45000`. `snapshot -i` shows `Average (LAeq) over 30 s`, `Loud moments`, `Background`, `Peak`, `Spikiness`, and `Add to map`. On the simulator, LAeq is typically 55 to 62 and Background about 52.
-- **Cancel.** Start again, then run `sm tap "Cancel"` before 30 s. The screen returns to `—` and `Start measuring`, and `sm db` shows no new row.
+- **Cancel.** Start again, then run `sm tap "Cancel"` before 30 s. The screen returns to `—` and `Start measuring`, and `npx convex data measurements` shows no new row.
 - **Denied.** Run `sm ad settings permission deny microphone` (or tap `Don’t Allow` on the prompt), then `sm tap "Start measuring"`. The screen shows `Soundmap needs the microphone to measure noise…`, `Open Settings`, and `Try again`.
 - **Proof.** Save `snapshot -i` and a screenshot of `measuring` and `done`. Check the Spikiness tile against `L10 − L90` from the other two tiles.
 

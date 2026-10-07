@@ -1,11 +1,11 @@
 ---
 name: verify
-description: Drive the Soundmap Expo app on an iOS Simulator the way a user does (Measure tab, Add to map, Map tab hexagons) and capture proof (screenshots, accessibility snapshots, SQLite rows). Use to verify any change to the app's screens, hooks, storage, or the sound-meter module before calling it done.
+description: Drive the Soundmap Expo app on an iOS Simulator the way a user does (Measure tab, Add to map, Map tab hexagons) and capture proof (screenshots, accessibility snapshots, Convex and outbox rows). Use to verify any change to the app's screens, hooks, storage, or the sound-meter module before calling it done.
 ---
 
 # Verify Soundmap
 
-Soundmap is an iOS/Android Expo app. The user surface is two tabs: **Measure** (a 30 s noise measurement, then "Add to map") and **Map** (saved measurements as colored H3 hexagons). There is no server. All state is one SQLite file inside the app's container.
+Soundmap is an iOS/Android Expo app. The user surface is two tabs: **Measure** (a 30 s noise measurement, then "Add to map") and **Map** (everyone's measurements as colored H3 hexagons). Measurements live on the Convex **dev** deployment named in `.env.local` (`CONVEX_DEPLOYMENT`). The phone keeps only an SQLite outbox of readings that haven't uploaded yet. Never point a verification run at a production deployment.
 
 This skill drives the **iOS Simulator** through T3 Code's `agent-device` and the helper `scripts/sm`. Android has the same features. It isn't scripted here because the synthetic mic input exists only on the iOS Simulator. On an Android emulator, the meter would need a real host mic.
 
@@ -57,7 +57,7 @@ Read `features/README.md`, then the feature file for what you're proving. Mechan
 - **Labels are the visible text.** Pressables have no `accessibilityRole` or `testID` (they show as `[other]`). Use exact strings: `Start measuring`, `Cancel`, `Measure again`, `Try again`, `Add to map`, `Added to map · View`, `Open Settings`.
 - **Permission prompts.** Microphone (two buttons): `sm ad alert accept`. Location (three buttons): `alert accept` fails, so use `sm ad press 'label="Allow While Using App"'` or `'label="Don’t Allow"'` (curly apostrophe). `alert get` reports "not found" even while a prompt is visible. Trust `snapshot -i`, which lists the alert buttons.
 - **Skip prompts** when the permission path is not what you are proving: `sm ad settings permission grant microphone` / `... grant location` (`deny`, `reset` also work).
-- **Fresh state:** `sm ad settings clear-app-state com.soundmap.app`, then `open --relaunch`. This empties the map and resets nothing else.
+- **Fresh state:** `npx convex run dev:resetMap` empties the shared map (it refuses unless the deployment sets `SOUNDMAP_ALLOW_RESET=true`, which only dev does). `sm ad settings clear-app-state com.soundmap.app`, then `open --relaunch`, empties the phone's outbox. The anonymous sign-in lives in the keychain, which `clear-app-state` keeps, so the phone stays the same user.
 - **Map hexagons are not in the accessibility tree.** After "Added to map · View", the camera centers on the cell, so the hexagon sits at the map's center, about `(201, 395)` on a 402×874 iPhone. Press there. Tap empty map, such as `(80, 600)`, to deselect.
 - **Waiting:** `sm ad wait text "<text>" <ms>`. A measurement takes 30 s of audio frames, so wait up to 45000 for `Measure again`.
 
@@ -67,15 +67,16 @@ Write everything to `.verify/evidence/<feature-id>-<YYYYMMDD-HHMM>/`. It's gitig
 
 - `sm ad screenshot <dir>/<NN-step>.png` before and after each user action that changes state, so the action and its result are both on record.
 - `sm ad snapshot -i > <dir>/<NN-step>.ax.txt` for text proof of labels and values. Screenshots alone don't prove numbers.
-- **Side effects:** `sm db > <dir>/db.txt`. It reads the real SQLite file from the simulator's app container. Prove a save by the new row, and check the row against the screen: the card's dBA is `round(laeq)`.
-- Drive the real user path: tabs, buttons, system prompts. Don't write to SQLite to fake a saved measurement, and don't deep-link past a step you claim to verify. The simulator's synthetic café input stands in for the microphone hardware only. Everything after the mic (A-weighting, framing, JS) still runs, so it is an acceptable boundary. Readings are random within a café range, so assert relationships (row matches card, band matches level), not exact numbers.
+- **Side effects:** `npx convex data measurements > <dir>/measurements.txt` and `npx convex data cells`. Prove a save by the new server row, and check it against the screen: the card's dBA is `round(laeq)`. `sm db` reads the phone's outbox, which is empty once everything has uploaded.
+- Drive the real user path: tabs, buttons, system prompts. Don't write to SQLite or Convex to fake a saved measurement, and don't deep-link past a step you claim to verify. The simulator's synthetic café input stands in for the microphone hardware only. Everything after the mic (A-weighting, framing, JS) still runs, so it is an acceptable boundary. Readings are random within a café range, so assert relationships (row matches card, band matches level), not exact numbers.
 
 ## Cleanup
 
 Kill only what this run started:
 
 ```bash
-sm ad settings clear-app-state com.soundmap.app   # drop rows this run saved
+npx convex run dev:resetMap                       # drop measurements this run saved (dev only)
+sm ad settings clear-app-state com.soundmap.app   # drop anything left in the outbox
 sm ad close                                       # end the agent-device session
 sm stop                                           # Metro started by `sm metro`, by its process group
 ```
@@ -94,4 +95,5 @@ Then call the `device_close` MCP tool for your device. Pass `shutdown: true` onl
 | `sm stop` | Stop the Metro `sm metro` started |
 | `sm ad <args>` | `agent-device <args> $AD_FLAGS` |
 | `sm tap "<label>"` | Press an element's center by exact accessibility label (works around `[covered]`) |
-| `sm db [sql]` | Query the app's SQLite on the `$AD_FLAGS` simulator. Default prints all measurements |
+| `sm db [sql]` | Query the app's SQLite on the `$AD_FLAGS` simulator. Default prints the outbox (readings not uploaded yet) |
+| `node scripts/convex-proxy.mjs <host> [port]` | Plain-HTTP proxy to the dev deployment, stopped to take the app offline (see `features/add-to-map.md`) |
