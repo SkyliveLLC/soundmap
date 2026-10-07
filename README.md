@@ -9,6 +9,7 @@ Status: early prototype. iOS and Android, built with Expo.
 - **Measure.** A 30 second, A-weighted noise measurement on your phone. It reports the average (LAeq), background (L90), loud moments (L10), peak (LAmax), and spikiness (L10 − L90).
 - **Map.** Add a measurement to the shared map and it shows up as a colored hexagon (H3, resolution 10, about one city block) for everyone, live. Hexagons with several measurements show their energy average. Tap any block to see its reading. A measurement added offline waits on the phone and uploads when the connection returns. The map opens where you are once you've allowed location, and on the lower 48 before that.
 - **Street noise.** All 50 states and DC start colored with road noise from the US DOT [National Transportation Noise Map](https://www.bts.gov/geospatial/national-transportation-noise-map) (NTNM). It is a modeled 24 hour average, not a measurement, so the app shows it faintly under your hexagons and labels it as modeled. It is never averaged into your readings. Zoomed in, each hexagon is a block. Zoomed out, larger hexagons show the area's average, with blocks quieter than 45 dBA counted as silent.
+- **Venues.** When you add a measurement near cafés, libraries or coworking spaces, the app asks whether you were in one of them. Its dot on the map opens a card with its loudness by hour of day, so you can see when it is quietest. Places come from [OpenStreetMap](https://www.openstreetmap.org).
 
 Phone microphones vary, so each reading is converted to dB SPL with an offset for that phone model and stored with the model and calibration it used. Models are added to `CALIBRATIONS` in `src/lib/calibration.ts` once measured against a reference sound level meter. Until a model has an entry, its readings use a placeholder offset and the Measure tab labels them UNCALIBRATED. No model has an entry yet.
 
@@ -16,9 +17,10 @@ Phone microphones vary, so each reading is converted to dB SPL with an offset fo
 
 - Audio is processed on the device and never recorded or stored.
 - Adding a measurement to the map is always your choice, and it is shared with everyone.
-- Only the noise summary, the H3 cell, the time, and the phone model with its calibration are sent. Raw GPS coordinates never leave the phone.
+- Only the noise summary, the H3 cell, the time, and the phone model with its calibration are sent, plus a venue's OpenStreetMap id and the hour when you name one. Raw GPS coordinates never leave the phone.
 - There are no accounts. Each install signs in as an anonymous user, used to recognize retried uploads.
-- The map only ever shows per-block averages and counts. Who measured, and when, stays on the server.
+- To list nearby venues, the phone sends our server the block it would share anyway. The server asks OpenStreetMap, so OpenStreetMap never sees the phone.
+- The map only ever shows per-block and per-venue averages and counts. Who measured, and when, stays on the server.
 
 ## Run it
 
@@ -44,11 +46,11 @@ npx expo lint
 
 ## Layout
 
-- `convex/` is the backend: the schema, anonymous auth, and `measurements.ts`, which adds a reading and serves the per-cell averages for the regions the map is showing.
+- `convex/` is the backend: the schema, anonymous auth, `measurements.ts`, which adds a reading and serves the per-cell averages for the regions the map is showing, `venues.ts`, which serves venues' hourly averages, and `venueSearch.ts`, which finds venues near a block and saves the result per block.
 - `modules/sound-meter/` is the native module (Swift and Kotlin). It applies A-weighting and emits a level every 125 ms.
-- `src/lib/` holds the pure logic: acoustics, per-model calibration, H3 cells and regions, the rules a measurement must pass, the loudness color scale, street noise and reading it from the tiles, and the offline outbox. `convex/` imports from it too.
+- `src/lib/` holds the pure logic: acoustics, per-model calibration, H3 cells and regions, the rules a measurement must pass, the loudness color scale, street noise and reading it from the tiles, venues, and the offline outbox. `convex/` imports from it too.
 - `src/hooks/` holds the measurement state machine, the "add to map" flow, and the sync that signs in and uploads queued readings.
-- `src/app/` holds the screens (Expo Router): the Map and Measure tabs.
+- `src/app/` holds the screens (Expo Router): the Map and Measure tabs. `src/components/` holds larger pieces of those screens, such as the venue card.
 - `scripts/` holds the street noise pipeline. Its output is one PMTiles archive, hosted on Cloudflare R2 rather than shipped in the app.
 - `patches/` holds a `patch-package` fix that lets `h3-js` run on Hermes ([uber/h3-js#203](https://github.com/uber/h3-js/issues/203)).
 
@@ -74,7 +76,6 @@ To try tiles before uploading them, serve `.street-noise/` with any server that 
 
 - Rail and aviation noise.
 - Calibrate the most common phone models.
-- Venues: rate how quiet a café is at a given hour.
 - Quiet walking routes.
 
 ## License
