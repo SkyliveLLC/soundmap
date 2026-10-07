@@ -2,10 +2,10 @@ import { useEffect, useReducer } from 'react';
 
 import SoundMeter from '../../modules/sound-meter/src/SoundMeterModule';
 import { CALIBRATION_OFFSET_DB, summarize, type NonEmptyArray, type NoiseSummary } from '@/lib/acoustics';
+import { SESSION_SEC } from '@/lib/measurement';
 
 // Matches the 125 ms window LevelMeter uses on both platforms.
 export const FRAME_SEC = 0.125;
-export const SESSION_SEC = 30;
 export const SESSION_FRAMES = SESSION_SEC / FRAME_SEC;
 
 export type MeasurementState =

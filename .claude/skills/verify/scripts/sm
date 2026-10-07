@@ -8,7 +8,7 @@
 #   sm stop           stop the Metro this script started. Evidence is left in place.
 #   sm ad <args>      run agent-device with the flags in $AD_FLAGS (from device_open)
 #   sm tap "<label>"  tap the element with exactly this accessibility label, by its center
-#   sm db [sql]       query the app's SQLite file on the $AD_FLAGS simulator (default: all rows)
+#   sm db [sql]       query the app's SQLite outbox on the $AD_FLAGS simulator (default: queued rows)
 set -euo pipefail
 
 ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
@@ -125,7 +125,7 @@ case "${1:-}" in
     data="$(xcrun simctl get_app_container "$udid" com.soundmap.app data)" || { echo "App not installed on $udid"; exit 1; }
     file="$data/Documents/SQLite/soundmap.db"
     [ -f "$file" ] || { echo "No database yet: the app creates it on first launch"; exit 1; }
-    sqlite3 -header "$file" "${2:-SELECT * FROM measurements ORDER BY at;}"
+    sqlite3 -header "$file" "${2:-SELECT * FROM outbox ORDER BY at;}"
     ;;
 
   *)

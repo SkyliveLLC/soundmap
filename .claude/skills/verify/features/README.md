@@ -8,7 +8,7 @@ This directory is the maintained source for verifying Soundmap's user-facing beh
 - `AD_FLAGS` holds the flags from `device_open` for a simulator this run owns.
 - The app is installed from `.verify/build/soundmap.app` and opened with `--relaunch` against this checkout's Metro port.
 - Simulated location is set: `sm ad settings location set 37.7763 -122.4232`.
-- Unless a recipe says otherwise, start from empty data: `sm ad settings clear-app-state com.soundmap.app`, then `sm ad open com.soundmap.app --relaunch --metro-host 127.0.0.1 --metro-port <port>`. This keeps granted permissions. Use `sm ad settings permission reset <microphone|location>` to see a prompt again.
+- Unless a recipe says otherwise, start from empty data: `npx convex run dev:resetMap` and `sm ad settings clear-app-state com.soundmap.app`, then `sm ad open com.soundmap.app --relaunch --metro-host 127.0.0.1 --metro-port <port>`. This keeps granted permissions. Use `sm ad settings permission reset <microphone|location>` to see a prompt again.
 
 ## Driving conventions
 
@@ -21,7 +21,7 @@ This directory is the maintained source for verifying Soundmap's user-facing beh
 ## Proof and skip reporting
 
 - Capture the action and the resulting state: screenshot plus `snapshot -i` before and after each state change.
-- A save is proven by `sm db` showing the new row and by the map showing a hexagon whose card matches that row.
+- A save is proven by `npx convex data measurements` showing the new row and by the map showing a hexagon whose card matches that row.
 - Save artifacts under `.verify/evidence/<feature-id>-<YYYYMMDD-HHMM>/` and name the entry point used.
 - Report an unreachable path with the command tried and the unmet precondition. Do not report a skipped entry point as verified through a different one.
 - The iOS Simulator feeds a synthetic café sound instead of the mic. Hardware mic behavior and `no-input` failures cannot be proven on the simulator. Report them as skipped.
@@ -33,5 +33,5 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 ## Features
 
 - [Measure noise](./measure.md) covers the 30 s session, live readout, summary stats, cancel, and microphone denial.
-- [Add to map](./add-to-map.md) covers saving a finished measurement at the current H3 cell, location denial, and jumping to the map.
-- [Map](./map.md) covers the empty state, colored hexagons, energy-averaged cells, and selecting a cell.
+- [Add to map](./add-to-map.md) covers uploading a finished measurement at the current H3 cell, queuing it offline, location denial, and jumping to the map.
+- [Map](./map.md) covers the empty state, colored hexagons, energy-averaged cells, selecting a cell, and live updates from another phone.

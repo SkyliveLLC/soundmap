@@ -1,30 +1,15 @@
 import type { FeatureCollection, Polygon } from 'geojson';
 import { cellToBoundary, latLngToCell } from 'h3-js';
 
-import { energyAverage, type NoiseSummary } from './acoustics.ts';
-
 // Resolution 10 hexagons are about 15,000 m², roughly a city block: coarse enough
 // that a saved cell does not pinpoint where someone sat.
 export const CELL_RESOLUTION = 10;
 
-/** A saved measurement. Only the H3 cell is kept, never the raw position. */
-export type Measurement = { id: string; at: number; cell: string; summary: NoiseSummary };
-
+/** A measured hexagon: the energy average of its readings' LAeqs, and how many there are. */
 export type CellAggregate = { cell: string; laeq: number; count: number };
 
 export function cellAt(latitude: number, longitude: number): string {
   return latLngToCell(latitude, longitude, CELL_RESOLUTION);
-}
-
-/** One entry per cell, with the energy average of its measurements' LAeqs. */
-export function aggregateByCell(measurements: readonly Measurement[]): CellAggregate[] {
-  const levelsByCell = new Map<string, [number, ...number[]]>();
-  for (const { cell, summary } of measurements) {
-    const levels = levelsByCell.get(cell);
-    if (levels) levels.push(summary.laeq);
-    else levelsByCell.set(cell, [summary.laeq]);
-  }
-  return Array.from(levelsByCell, ([cell, levels]) => ({ cell, laeq: energyAverage(levels), count: levels.length }));
 }
 
 export function cellPolygon(cell: string): Polygon {
