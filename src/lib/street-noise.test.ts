@@ -1,26 +1,23 @@
 /// <reference types="node" />
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-import { cellToLatLng } from 'h3-js';
+import { cellToChildren, cellToLatLng, cellToParent } from 'h3-js';
 
-import { cellAt, type CellAggregate } from './cells.ts';
+import { cellAt, type Bounds, type CellAggregate } from './cells.ts';
 import {
+  BLOCK_ZOOM,
+  NOISE_LAYER,
   aggregatePixels,
+  areaLevels,
+  noiseFeature,
   parsePixelLine,
-  parseStreetNoise,
   readCell,
-  serializeCells,
-  serializeLevels,
-  streetLevelAt,
-  type Extent,
 } from './street-noise.ts';
 
-const SF: Extent = [-122.53, 37.7, -122.35, 37.84];
+const SF: Bounds = [-122.53, 37.7, -122.35, 37.84];
 const MISSION_16TH = cellAt(37.7651, -122.4196);
-const FOLSOM_19TH = cellAt(37.7599, -122.4148);
 const OAKLAND = cellAt(37.8044, -122.2712);
 
 function pixelsAt(cell: string, dbs: number[]) {
@@ -28,57 +25,56 @@ function pixelsAt(cell: string, dbs: number[]) {
   return dbs.map((db) => ({ latitude, longitude, db }));
 }
 
-const noise = aggregatePixels(pixelsAt(MISSION_16TH, [60, 80]), { release: '2022', extent: SF });
-const measured: CellAggregate = { cell: OAKLAND, laeq: 58, count: 1 };
-
-test('a cell energy-averages the pixels present in it', () => {
-  const level = streetLevelAt(noise, MISSION_16TH);
-  assert.ok(level.kind === 'modeled');
-  assert.ok(Math.abs(level.laeq24h - 77.03) < 0.01, `got ${level.laeq24h}`);
+test('a block energy-averages the pixels present in it', () => {
+  const levels = aggregatePixels(pixelsAt(MISSION_16TH, [60, 80]), SF);
+  const laeq = levels.get(MISSION_16TH);
+  assert.ok(laeq !== undefined && Math.abs(laeq - 77.03) < 0.01, `got ${laeq}`);
 });
 
-test('a cell without pixels is below the floor inside the extent and not covered outside it', () => {
-  assert.deepEqual(streetLevelAt(noise, FOLSOM_19TH), { kind: 'below-floor' });
-  assert.deepEqual(streetLevelAt(noise, OAKLAND), { kind: 'not-covered' });
+test('a window keeps only the blocks centered in it', () => {
+  const levels = aggregatePixels([...pixelsAt(MISSION_16TH, [60]), ...pixelsAt(OAKLAND, [70])], SF);
+  assert.deepEqual([...levels.keys()], [MISSION_16TH]);
 });
 
-test('only an unmeasured cell outside the extent has no reading', () => {
-  assert.equal(readCell(OAKLAND, undefined, noise), null);
-  assert.deepEqual(readCell(OAKLAND, measured, noise), { cell: OAKLAND, measured, street: { kind: 'not-covered' } });
-  assert.deepEqual(readCell(FOLSOM_19TH, undefined, noise), {
-    cell: FOLSOM_19TH,
+test('only an unmeasured cell outside the modeled area has no reading', () => {
+  const measured: CellAggregate = { cell: OAKLAND, laeq: 58, count: 1 };
+  const outside = { kind: 'not-covered' } as const;
+  assert.equal(readCell(OAKLAND, undefined, outside), null);
+  assert.deepEqual(readCell(OAKLAND, measured, outside), { cell: OAKLAND, measured, street: outside });
+  assert.deepEqual(readCell(OAKLAND, undefined, { kind: 'below-floor' }), {
+    cell: OAKLAND,
     measured: null,
     street: { kind: 'below-floor' },
   });
 });
 
-test('levels survive a serialize and parse round trip at 0.1 dB', () => {
-  const parsed = parseStreetNoise(JSON.parse(serializeLevels(noise)));
-  assert.equal(parsed.release, '2022');
-  assert.deepEqual(parsed.extent, SF);
-  assert.deepEqual(parsed.levels, new Map([[MISSION_16TH, 77]]));
+test('an area spreads its blocks over its whole size and drops below the floor', async () => {
+  const area = cellToParent(MISSION_16TH, 9);
+  const blocks = cellToChildren(area, 10).map((cell) => [cell, 80] as const);
+  const levels = new Map(await Array.fromAsync(areaLevels(blocks.slice(0, 1))));
+  // One loud block in seven: 80 dB spread over seven blocks.
+  assert.ok(Math.abs(levels.get(area)! - (80 - 10 * Math.log10(7))) < 0.01);
+  assert.equal(levels.get(cellToParent(MISSION_16TH, 5)), undefined);
+  // A full area matches its blocks.
+  assert.ok(Math.abs(new Map(await Array.fromAsync(areaLevels(blocks))).get(area)! - 80) < 0.01);
 });
 
-test('parsing rejects levels below the DOT floor and cells at another resolution', () => {
-  const valid = { release: '2022', extent: SF, cells: { [MISSION_16TH]: 61 } };
-  assert.doesNotThrow(() => parseStreetNoise(valid));
-  assert.throws(() => parseStreetNoise({ ...valid, cells: { [MISSION_16TH]: 44.9 } }));
-  assert.throws(() => parseStreetNoise({ ...valid, cells: { '89283082803ffff': 61 } }));
-  assert.throws(() => parseStreetNoise({ ...valid, extent: [-122.35, 37.7, -122.53, 37.84] }));
+test('every area of sorted blocks comes out once', async () => {
+  const blocks = [MISSION_16TH, OAKLAND].sort().map((cell) => [cell, 90] as const);
+  const areas = (await Array.fromAsync(areaLevels(blocks))).map(([cell]) => cell);
+  assert.equal(new Set(areas).size, areas.length);
+  for (const block of [MISSION_16TH, OAKLAND]) assert.ok(areas.includes(cellToParent(block, 9)));
+});
+
+test('a block feature draws from the block zoom in, rounded to 0.1 dB', () => {
+  const feature = JSON.parse(noiseFeature(MISSION_16TH, 61.26));
+  assert.deepEqual(feature.tippecanoe, { layer: NOISE_LAYER, minzoom: BLOCK_ZOOM, maxzoom: BLOCK_ZOOM });
+  assert.deepEqual(feature.properties, { laeq: 61.3 });
+  assert.equal(feature.geometry.coordinates[0].length, 7);
 });
 
 test('pixel lines parse as lng lat db and NoData is dropped', () => {
   assert.deepEqual(parsePixelLine('-122.4196 37.7651 61.25'), { latitude: 37.7651, longitude: -122.4196, db: 61.25 });
   assert.equal(parsePixelLine('-122.4196 37.7651 3.40282306073709653e+38'), null);
   assert.equal(parsePixelLine(''), null);
-});
-
-test('the committed cells.geojson holds exactly the cells and levels of the committed levels.json', () => {
-  const asset = (name: string) => readFileSync(new URL(`../../assets/street-noise/${name}`, import.meta.url), 'utf8');
-  const committed = parseStreetNoise(JSON.parse(asset('levels.json')));
-  assert.ok(committed.levels.size > 0);
-  assert.ok(
-    asset('cells.geojson') === serializeCells(committed),
-    'cells.geojson does not match levels.json. Rerun `npm run street-noise`.',
-  );
 });
