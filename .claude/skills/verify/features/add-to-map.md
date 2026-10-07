@@ -21,7 +21,7 @@ Preconditions:
 - Baseline state from `README.md`, with the summary screen showing (`Measure again` visible).
 - Simulated location set to `37.7763 -122.4232`. Location permission is `reset` (to test the prompt) or `grant`ed.
 
-- **Add.** Run `sm tap "Add to map"`. On first run, `Allow “soundmap” to use your location?` appears with three buttons. Run `sm ad press 'label="Allow While Using App"'`. Run `sm ad wait text "Added to map · View" 20000`.
+- **Add.** Run `sm tap "Add to map"`. On first run, `Allow “soundmap” to use your location?` appears with three buttons. Run `sm ad press 'label="Allow While Using App"'`. Near venues, the venue question shows first (see `venues.md`). Run `sm tap "Not at any of these"` to save without one. Run `sm ad wait text "Added to map · View" 20000`.
 - **Side effect.** Run `npx convex data measurements`. Exactly one new row has `cell` `8a2830828317fff` (for the coordinates above), `durationSec` 30, `laeq` whose rounding equals the summary's big number, and `calibration` `{ model: "Simulator", offsetDb: 120, id: null }`. `sm db` shows an empty outbox. Prove `add-privacy` from the column list (no latitude or longitude) and from `npx convex run measurements:cells`, which returns only `cell`, `laeq`, `count`.
 - **View.** Run `sm tap "Added to map · View"`. The Map tab is selected. `snapshot -i` shows `<round(laeq)> dBA average` and `<band> · 1 measurement`, and a screenshot shows a hexagon in the band color at the map center.
 - **Denied.** From a fresh summary, run `sm ad settings permission deny location`, then `sm tap "Add to map"`. The screen shows `Location is off for Soundmap, so this measurement was not added to the map.` and `Open Settings`. Neither `sm db` nor `npx convex data measurements` shows a new row.

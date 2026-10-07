@@ -35,3 +35,4 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [Measure noise](./measure.md) covers the 30 s session, live readout, summary stats, cancel, and microphone denial.
 - [Add to map](./add-to-map.md) covers uploading a finished measurement at the current H3 cell, queuing it offline, location denial, and jumping to the map.
 - [Map](./map.md) covers the empty state, colored hexagons, energy-averaged cells, selecting a cell, and live updates from another phone.
+- [Venues](./venues.md) covers the venue question after "Add to map", venue dots on the map, and the hour by hour venue card.
