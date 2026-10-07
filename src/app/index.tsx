@@ -7,17 +7,17 @@ import {
   type CameraRef,
   type InitialViewState,
 } from '@maplibre/maplibre-react-native';
+import { useQuery } from 'convex/react';
 import { getForegroundPermissionsAsync } from 'expo-location';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useSQLiteContext } from 'expo-sqlite';
 import { cellToLatLng } from 'h3-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { aggregateByCell, cellAt, cellPolygon, cellsToGeoJSON, type CellAggregate } from '@/lib/cells';
+import { api } from '../../convex/_generated/api';
+import { cellAt, cellPolygon, cellsToGeoJSON } from '@/lib/cells';
 import { LOUDNESS_COLOR, loudnessBand, type LoudnessBand } from '@/lib/loudness';
-import { listMeasurements } from '@/lib/measurement-store';
 import { DOT_FLOOR_DB, readCell, type CellReading, type StreetLevel } from '@/lib/street-noise';
 import { STREET_NOISE, STREET_NOISE_GEOJSON_URI } from '@/lib/street-noise-assets';
 import { usePalette, type Palette } from '@/theme';
@@ -26,24 +26,22 @@ const MAP_STYLE = 'https://tiles.openfreemap.org/styles/positron';
 const SAN_FRANCISCO: InitialViewState = { center: [-122.4194, 37.7749], zoom: 12.5 };
 
 export default function MapScreen() {
-  const db = useSQLiteContext();
   const colors = usePalette();
   const insets = useSafeAreaInsets();
   const camera = useRef<CameraRef>(null);
   // The selected cell lives in the route so "Added to map · View" can open the map on it.
   const { cell: selectedCell } = useLocalSearchParams<{ cell?: string }>();
-  const [aggregates, setAggregates] = useState<CellAggregate[] | null>(null);
+  // Everyone's measured hexagons, kept live by Convex. Undefined until the first result arrives.
+  const aggregates = useQuery(api.measurements.cells);
   const [locationGranted, setLocationGranted] = useState(false);
   // The cell the last map tap selected. Only selections from elsewhere ("View") move the camera.
   const tappedCell = useRef<string | undefined>(undefined);
 
-  // Saves happen on the Measure tab, so returning here is when the data can have changed.
-  // Only reads the location permission: the prompt belongs to "Add to map".
+  // "Add to map" may have just granted location. Only reads the permission: the prompt belongs to "Add to map".
   useFocusEffect(
     useCallback(() => {
-      listMeasurements(db).then((measurements) => setAggregates(aggregateByCell(measurements)));
       getForegroundPermissionsAsync().then(({ granted }) => setLocationGranted(granted));
-    }, [db]),
+    }, []),
   );
 
   useEffect(() => {

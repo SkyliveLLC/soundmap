@@ -1,13 +1,18 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { isValidCell } from 'h3-js';
 
-import type { Measurement } from './cells.ts';
+import type { NoiseSummary } from './acoustics.ts';
+import type { Measurement } from './measurement.ts';
+
+// Readings wait here until the server has them, so one taken offline survives an app restart.
+// Rows leave once the server answers, accepted or refused.
 
 /** Passed to SQLiteProvider's onInit. Safe to run on every launch. */
 export async function createSchema(db: SQLiteDatabase) {
   await db.execAsync(`
-    CREATE TABLE IF NOT EXISTS measurements (
-      id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
+    DROP TABLE IF EXISTS measurements;
+    CREATE TABLE IF NOT EXISTS outbox (
+      client_id TEXT PRIMARY KEY NOT NULL DEFAULT (lower(hex(randomblob(16)))),
       at INTEGER NOT NULL,
       cell TEXT NOT NULL,
       laeq REAL NOT NULL,
@@ -19,9 +24,10 @@ export async function createSchema(db: SQLiteDatabase) {
   `);
 }
 
-export async function insertMeasurement(db: SQLiteDatabase, { at, cell, summary }: Omit<Measurement, 'id'>) {
-  await db.runAsync(
-    'INSERT INTO measurements (at, cell, laeq, lamax, l10, l90, duration_sec) VALUES (?, ?, ?, ?, ?, ?, ?)',
+/** Queues a reading and returns it with the clientId the server will deduplicate on. */
+export async function enqueue(db: SQLiteDatabase, { at, cell, summary }: Omit<Measurement, 'clientId'>): Promise<Measurement> {
+  const row = await db.getFirstAsync<{ client_id: string }>(
+    'INSERT INTO outbox (at, cell, laeq, lamax, l10, l90, duration_sec) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING client_id',
     at,
     cell,
     summary.laeq,
@@ -30,19 +36,25 @@ export async function insertMeasurement(db: SQLiteDatabase, { at, cell, summary 
     summary.l90,
     summary.durationSec,
   );
+  if (!row) throw new Error('outbox insert returned no row');
+  return { clientId: row.client_id, at, cell, summary };
 }
 
-export async function listMeasurements(db: SQLiteDatabase): Promise<Measurement[]> {
-  const rows = await db.getAllAsync<Record<string, unknown>>('SELECT * FROM measurements ORDER BY at');
+export async function listQueued(db: SQLiteDatabase): Promise<Measurement[]> {
+  const rows = await db.getAllAsync<Record<string, unknown>>('SELECT * FROM outbox ORDER BY at');
   return rows.flatMap((row) => {
     const measurement = parseRow(row);
-    if (!measurement) console.warn('[measurement-store] skipping unreadable row', row);
+    if (!measurement) console.warn('[outbox] skipping unreadable row', row);
     return measurement ? [measurement] : [];
   });
 }
 
-function parseRow({ id, at, cell, laeq, lamax, l10, l90, duration_sec }: Record<string, unknown>): Measurement | null {
-  if (typeof id !== 'string' || typeof cell !== 'string' || !isValidCell(cell)) return null;
+export async function dequeue(db: SQLiteDatabase, clientId: string) {
+  await db.runAsync('DELETE FROM outbox WHERE client_id = ?', clientId);
+}
+
+function parseRow({ client_id, at, cell, laeq, lamax, l10, l90, duration_sec }: Record<string, unknown>): Measurement | null {
+  if (typeof client_id !== 'string' || typeof cell !== 'string' || !isValidCell(cell)) return null;
   if (
     typeof at !== 'number' ||
     typeof laeq !== 'number' ||
@@ -53,5 +65,6 @@ function parseRow({ id, at, cell, laeq, lamax, l10, l90, duration_sec }: Record<
   ) {
     return null;
   }
-  return { id, at, cell, summary: { laeq, lamax, l10, l90, durationSec: duration_sec } };
+  const summary: NoiseSummary = { laeq, lamax, l10, l90, durationSec: duration_sec };
+  return { clientId: client_id, at, cell, summary };
 }

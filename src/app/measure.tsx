@@ -7,12 +7,12 @@ import { useAddToMap } from '@/hooks/use-add-to-map';
 import {
   FRAME_SEC,
   SESSION_FRAMES,
-  SESSION_SEC,
   useMeasurement,
   type FailureReason,
   type MeasurementState,
 } from '@/hooks/use-measurement';
 import type { NoiseSummary } from '@/lib/acoustics';
+import { SESSION_SEC } from '@/lib/measurement';
 import { usePalette, type Palette } from '@/theme';
 
 export default function MeasureScreen() {
@@ -152,15 +152,23 @@ function AddToMap({ summary, colors }: { summary: NoiseSummary; colors: Palette 
     case 'idle':
     case 'locating':
       return (
-        <Pressable
-          onPress={add}
-          disabled={state.status === 'locating'}
-          style={({ pressed }) => [styles.button, { backgroundColor: colors.accent }, pressed && { opacity: 0.7 }]}
-        >
-          <Text style={[styles.buttonLabel, { color: colors.onAccent }]}>
-            {state.status === 'idle' ? 'Add to map' : 'Finding your location…'}
-          </Text>
-        </Pressable>
+        <View>
+          <Caption colors={colors}>Shared anonymously on the public map, as the block you’re on.</Caption>
+          <Pressable
+            onPress={add}
+            disabled={state.status === 'locating'}
+            style={({ pressed }) => [
+              styles.button,
+              styles.shareButton,
+              { backgroundColor: colors.accent },
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={[styles.buttonLabel, { color: colors.onAccent }]}>
+              {state.status === 'idle' ? 'Add to map' : 'Finding your location…'}
+            </Text>
+          </Pressable>
+        </View>
       );
     case 'saved':
       return (
@@ -170,6 +178,12 @@ function AddToMap({ summary, colors }: { summary: NoiseSummary; colors: Palette 
         >
           <Text style={[styles.buttonLabel, { color: colors.accent }]}>Added to map · View</Text>
         </Pressable>
+      );
+    case 'queued':
+      return (
+        <View style={styles.queued}>
+          <Caption colors={colors}>Saved. It will appear on the map when you’re back online.</Caption>
+        </View>
       );
     case 'denied':
       return (
@@ -216,6 +230,8 @@ const styles = StyleSheet.create({
   statDetail: { fontSize: 12, letterSpacing: 0.4 },
   button: { height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
   buttonLabel: { fontSize: 17, fontWeight: '600' },
+  shareButton: { marginTop: 12 },
+  queued: { height: 56, justifyContent: 'center' },
   secondaryButton: { height: 44, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   secondaryLabel: { fontSize: 16, fontWeight: '500' },
 });
