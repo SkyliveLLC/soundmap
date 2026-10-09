@@ -5,6 +5,7 @@ This directory is the maintained source for verifying Soundmap's user-facing beh
 ## Baseline preconditions
 
 - `sm doctor` prints `doctor: OK` for this checkout.
+- A backend this run may reset, and the street-noise archive served locally (SKILL.md, Launch step 0).
 - `AD_FLAGS` holds the flags from `device_open` for a simulator this run owns.
 - The app is installed from `.verify/build/soundmap.app` and opened with `--relaunch` against this checkout's Metro port.
 - Simulated location is set: `sm ad settings location set 37.7763 -122.4232`.

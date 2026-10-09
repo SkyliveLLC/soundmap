@@ -16,7 +16,7 @@ STATE="$ROOT/.verify"
 APP="$STATE/build/soundmap.app"
 METRO_ENV="$STATE/metro.env"
 # Files that change the native binary. A change here needs `sm build` again.
-NATIVE_PATHS=(app.json package.json package-lock.json modules plugins patches)
+NATIVE_PATHS=(app.json package.json package-lock.json modules plugins patches assets/expo.icon assets/images)
 # T3 Code's agent-device launcher. It requires the --config and --session flags device_open returns.
 AD="${AGENT_DEVICE:-$HOME/.t3/userdata/device/bin/agent-device}"
 
@@ -26,7 +26,7 @@ cd "$ROOT"
 listener_pid() { lsof -nP -t -iTCP:"$1" -sTCP:LISTEN 2>/dev/null | head -1; }
 pid_cwd() { lsof -a -p "$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p'; }
 # Content hash of the native inputs, committed or not. Android build output is excluded.
-native_hash() { find "${NATIVE_PATHS[@]}" -type f -not -path 'modules/*/android/build/*' | sort | xargs shasum | shasum | cut -c1-12; }
+native_hash() { find "${NATIVE_PATHS[@]}" -type f -not -path 'modules/*/android/build/*' -print0 | sort -z | xargs -0 shasum | shasum | cut -c1-12; }
 
 case "${1:-}" in
   build)
