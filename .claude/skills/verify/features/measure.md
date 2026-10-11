@@ -9,7 +9,7 @@ The Measure tab records 30 seconds of A-weighted sound level, shows a live dBA r
 - `measure-cancel` stops a running session and returns to idle.
 - `measure-denied` shows the microphone-off message with `Open Settings` and `Try again`.
 - `measure-again` starts a fresh session from the summary.
-- `measure-calibration` shows `CALIBRATED` when the phone model has an entry in `CALIBRATIONS` (`src/lib/calibration.ts`), otherwise `UNCALIBRATED` and a placeholder +120 dB offset. The reading carries `calibration: { model, offsetDb, id }`.
+- `measure-calibration` shows `CALIBRATED` when the phone model has an entry in `CALIBRATIONS` (`src/lib/calibration.ts`), otherwise `UNCALIBRATED · <model>` (the `CALIBRATIONS` key) and a placeholder +120 dB offset. The reading carries `calibration: { model, offsetDb, id }`.
 
 ## How to get to it (user POV)
 
@@ -23,7 +23,7 @@ Preconditions:
 
 - Baseline state from `README.md`. The microphone permission is `reset` (to test the prompt) or `grant`ed.
 
-- **Open the tab.** Run `sm ad press 'label="Measure, tab, 2 of 2"' --settle`. The diff shows `Soundmap`, `UNCALIBRATED`, `—`, `dBA`, `Hold your phone still for 30 seconds. Sound is measured on your phone and never recorded.`, and `Start measuring`.
+- **Open the tab.** Run `sm ad press 'label="Measure, tab, 2 of 2"' --settle`. The diff shows `Soundmap`, `UNCALIBRATED · Simulator`, `—`, `dBA`, `Hold your phone still for 30 seconds. Sound is measured on your phone and never recorded.`, and `Start measuring`.
 - **Start.** Run `sm tap "Start measuring"`. On first run, a `Allow “soundmap” to access your microphone?` prompt appears. Run `sm ad alert accept`. Within 2 s, `snapshot -i` shows a numeric readout, `Listening · N of 30 s`, and `Cancel`.
 - **Finish.** Run `sm ad wait text "Measure again" 45000`. `snapshot -i` shows `Average (LAeq) over 30 s`, `Loud moments`, `Background`, `Peak`, `Spikiness`, `Shared anonymously on the public map, as the block you’re on.`, and `Add to map`. On the simulator, with the placeholder offset, LAeq is typically 55 to 65 and Background about 52.
 - **Cancel.** Start again, then run `sm tap "Cancel"` before 30 s. The screen returns to `—` and `Start measuring`, and `npx convex data measurements` shows no new row.
@@ -36,5 +36,5 @@ Preconditions:
 - `sm ad alert get` says "alert not found" while the mic prompt is up. `alert accept` still works.
 - The session is counted in audio frames, not timer time. Waiting a fixed 30 s with `sleep` can be short. Wait for `Measure again`.
 - The `no-input` failure ("No microphone is available on this device.") and the `unexpected` failure ("Something went wrong while measuring. Please try again.", with `Try again`) cannot be produced on the simulator.
-- `CALIBRATED` needs a real device whose model is in `CALIBRATIONS`. The simulator's model is always `Simulator`, and the table is empty, so only `UNCALIBRATED` can be shown today.
+- `CALIBRATED` needs a real device whose model is in `CALIBRATIONS`. The simulator's model is always `Simulator`, and the table is empty, so only `UNCALIBRATED · Simulator` can be shown today.
 - The four stat tiles hide while the venue question is up after `Add to map`, and come back once it is answered.
