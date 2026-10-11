@@ -44,6 +44,36 @@ npx tsc --noEmit       # typecheck
 npx expo lint
 ```
 
+## Ship a build
+
+Release builds run in the cloud on [EAS](https://docs.expo.dev/build/introduction/). `eas.json` has two profiles. `production` makes App Store builds for TestFlight, and EAS raises the build number on each one. `preview` makes builds that testers install directly: an APK on Android and an ad hoc build on iOS.
+
+The owner of the Expo, Convex and Apple Developer accounts does this once:
+
+```bash
+npx eas-cli@latest login
+npx eas-cli@latest init   # creates the EAS project and writes its id into app.json
+npx convex deploy         # pushes convex/ to the production deployment
+```
+
+Set the Convex Auth signing keys on the production deployment the same way as on dev. `npx convex dashboard --prod` opens it, and its settings page shows the deployment URL. The app needs that URL at build time, and `.env.local` never reaches EAS, so store it as an EAS environment variable for both profiles. Preview builds then use the production map too.
+
+```bash
+npx eas-cli@latest env:set --name EXPO_PUBLIC_CONVEX_URL --value <production URL> \
+  --environment production --environment preview --visibility plaintext
+```
+
+Then build and send the build to TestFlight. The first build asks you to sign in to your Apple Developer account and sets up signing.
+
+```bash
+npx eas-cli@latest build --platform ios --profile production
+npx eas-cli@latest submit --platform ios
+```
+
+For a preview build on an iPhone, register the phone first with `npx eas-cli@latest device:create`.
+
+Street noise stays blank in these builds until the tiles archive is hosted. See [Refresh street noise data](#refresh-street-noise-data).
+
 ## Layout
 
 - `convex/` is the backend: the schema, anonymous auth, `measurements.ts`, which adds a reading and serves the per-cell averages for the regions the map is showing, `venues.ts`, which serves venues' hourly averages, and `venueSearch.ts`, which finds venues near a block and saves the result per block.
