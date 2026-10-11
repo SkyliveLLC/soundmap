@@ -11,7 +11,7 @@ Status: early prototype. iOS and Android, built with Expo.
 - **Street noise.** All 50 states and DC start colored with road noise from the US DOT [National Transportation Noise Map](https://www.bts.gov/geospatial/national-transportation-noise-map) (NTNM). It is a modeled 24 hour average, not a measurement, so the app shows it faintly under your hexagons and labels it as modeled. It is never averaged into your readings. Zoomed in, each hexagon is a block. Zoomed out, larger hexagons show the area's average, with blocks quieter than 45 dBA counted as silent.
 - **Venues.** When you add a measurement near cafés, libraries or coworking spaces, the app asks whether you were in one of them. Its dot on the map opens a card with its loudness by hour of day, so you can see when it is quietest. Places come from [OpenStreetMap](https://www.openstreetmap.org).
 
-Phone microphones vary, so each reading is converted to dB SPL with an offset for that phone model and stored with the model and calibration it used. Models are added to `CALIBRATIONS` in `src/lib/calibration.ts` once measured against a reference sound level meter. Until a model has an entry, its readings use a placeholder offset and the Measure tab labels them UNCALIBRATED. No model has an entry yet.
+Phone microphones vary, so each reading is converted to dB SPL with an offset for that phone model and stored with the model and calibration it used. Models are added to `CALIBRATIONS` in `src/lib/calibration.ts` once measured against a reference sound level meter. Until a model has an entry, its readings use a placeholder offset and the Measure tab labels them UNCALIBRATED along with the phone's model. No model has an entry yet. See [Calibrate a phone model](#calibrate-a-phone-model).
 
 ## Privacy
 
@@ -101,6 +101,17 @@ The map reads street noise from `street-noise-<release>.pmtiles`, a single file 
 4. Upload the archive to the Cloudflare R2 bucket with [rclone](https://rclone.org/s3/#cloudflare-r2), set up once as a remote named `r2` with your R2 API keys (the dashboard can't upload files this large): `rclone copyto .street-noise/street-noise-2022.pmtiles r2:<bucket>/street-noise-2022.pmtiles`. Then set `STREET_NOISE_RELEASE` and `STREET_NOISE_TILES` in `src/lib/street-noise.ts`. A new release gets a new file name, so phones never mix two releases.
 
 To try tiles before uploading them, serve `.street-noise/` with any server that supports range requests (`npx http-server .street-noise -p 8791`) and point a dev build at it in `.env.local`: `EXPO_PUBLIC_STREET_NOISE_TILES=pmtiles://http://127.0.0.1:8791/street-noise-2022.pmtiles`.
+
+## Calibrate a phone model
+
+You need the phone, a speaker that plays steady pink noise, a quiet room, and a reference sound level meter (class 1 or 2, A-weighted, set to LAeq or slow).
+
+1. Open the Measure tab. While the phone is uncalibrated, the label shows its model, such as `UNCALIBRATED · iPhone16,1`. Use that model as the key in `CALIBRATIONS`.
+2. Play the pink noise at about 70 to 80 dBA. Hold the phone's microphone and the meter side by side, about a meter from the speaker.
+3. Run the app's 30 second measurement and the meter's LAeq over the same 30 seconds. Write down both LAeq values. The app shows LAeq rounded to a whole dB, so use that number. The result is good to about half a dB.
+4. Do this 3 times.
+5. Work out the offset: `UNCALIBRATED_OFFSET_DB + (meter LAeq − app LAeq)`, averaged over the 3 runs. `UNCALIBRATED_OFFSET_DB` is in `src/lib/calibration.ts`.
+6. Add an entry to `CALIBRATIONS` with that offset and a new id, for example `'iPhone16,1': { id: 'iPhone16,1/2026-10', offsetDb: 117.5 }`.
 
 ## Roadmap
 
