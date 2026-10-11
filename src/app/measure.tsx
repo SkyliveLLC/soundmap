@@ -28,8 +28,9 @@ export default function MeasureScreen() {
       <View style={styles.header}>
         <Text style={[styles.brand, { color: colors.ink }]}>Soundmap</Text>
         <View style={[styles.pill, { borderColor: colors.muted }]}>
-          <Text style={[styles.pillText, { color: colors.muted }]}>
-            {deviceCalibration.id ? 'CALIBRATED' : 'UNCALIBRATED'}
+          {/* The model is the CALIBRATIONS key, so it shrinks to fit rather than truncate. */}
+          <Text style={[styles.pillText, { color: colors.muted }]} numberOfLines={1} adjustsFontSizeToFit>
+            {deviceCalibration.id ? 'CALIBRATED' : `UNCALIBRATED · ${deviceCalibration.model}`}
           </Text>
         </View>
       </View>
@@ -261,9 +262,9 @@ function Caption({ children, colors }: { children: ReactNode; colors: Palette })
 
 const styles = StyleSheet.create({
   screen: { flex: 1, paddingHorizontal: 28, paddingBottom: 12 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingTop: 12 },
   brand: { fontSize: 17, fontWeight: '600', letterSpacing: 0.2 },
-  pill: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  pill: { flexShrink: 1, borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   pillText: { fontSize: 11, fontWeight: '600', letterSpacing: 1.2 },
   body: { flex: 1, justifyContent: 'center', gap: 24 },
   readout: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 8 },
