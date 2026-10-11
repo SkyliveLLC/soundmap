@@ -44,8 +44,6 @@ npx tsc --noEmit       # typecheck
 npx expo lint
 ```
 
-CI runs the same three checks on every pull request.
-
 ## Layout
 
 - `convex/` is the backend: the schema, anonymous auth, `measurements.ts`, which adds a reading and serves the per-cell averages for the regions the map is showing, `venues.ts`, which serves venues' hourly averages, and `venueSearch.ts`, which finds venues near a block and saves the result per block.
