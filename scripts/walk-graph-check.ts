@@ -82,8 +82,9 @@ const times = rows.map((row) => row.ms);
 console.log(`planWalk  median ${median(times).toFixed(0)} ms, max ${Math.max(...times).toFixed(0)} ms`);
 
 function gainsOf(plan: WalkPlan): Record<QuietPreset, Gain> {
+  // The route the card shows for each preset: a preset with no route of its own falls back to the other one.
   const gain = (preset: QuietPreset): Gain => {
-    const choice = plan.choices.find((candidate) => candidate.preset === preset);
+    const choice = plan.choices.find((candidate) => candidate.preset === preset) ?? plan.choices[0];
     return choice
       ? {
           db: plan.shortest.laeq - choice.route.laeq,
