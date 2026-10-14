@@ -51,9 +51,10 @@ const WALKABLE_HIGHWAYS: ReadonlySet<string> = new Set([
   'footway', 'path', 'steps', 'corridor', 'cycleway', 'bridleway',
 ]);
 
-// Guards. A wrong or truncated extract, or a blocks.tsv from somewhere else, falls far below these. California
-// (2026-10) has 96.6 % of nodes in its largest component and 33.9 % of its length in modeled blocks.
-const MIN_LARGEST_COMPONENT = 0.95;
+// Guards. A broken join, or a blocks.tsv from somewhere else, falls far below these. California (2026-10) has
+// 98.3 % of nodes in networks that cross a tile edge and 34.0 % of its length in modeled blocks; nodes that stop
+// joining across tiles or along a way leave under 1 %.
+const MIN_CROSSING_TILES = 0.9;
 const MIN_MODELED_SHARE = 0.05;
 
 const { values } = parseArgs({
@@ -402,12 +403,15 @@ async function writeTiles(piecesFile: string, mbtiles: string): Promise<number> 
 }
 
 /**
- * Guard: most of the graph must be one walkable network. Components are local to a tile; a node in several
- * tiles merges theirs, which the sorted nodes file puts next to each other.
+ * Guard: most nodes must be in a network that reaches past its own tile. A broken join, within tiles or across
+ * them, leaves most nodes in fragments inside one tile, while separate networks such as islands still count.
+ * Components are local to a tile; a node in several tiles merges theirs, which the sorted nodes file puts next
+ * to each other.
  */
 async function checkComponents(nodesFile: string, components: number): Promise<void> {
   const parent = Int32Array.from({ length: components }, (_, i) => i);
   const size = new Float64Array(components);
+  const crossesTiles = new Uint8Array(components);
   const root = (component: number): number => {
     while (parent[component] !== component) component = parent[component] = parent[parent[component]];
     return component;
@@ -417,18 +421,31 @@ async function checkComponents(nodesFile: string, components: number): Promise<v
     const [first, ...others] = rows.map(([, component]) => Number(component));
     nodes++;
     size[first]++;
-    for (const other of others) parent[root(other)] = root(first);
+    for (const other of others) {
+      const top = root(first);
+      parent[root(other)] = top;
+      crossesTiles[top] = 1;
+    }
   }
   await rm(nodesFile);
+  for (let component = 0; component < components; component++) {
+    if (crossesTiles[component]) crossesTiles[root(component)] = 1;
+  }
   const sizes = new Map<number, number>();
   for (let component = 0; component < components; component++) {
     const top = root(component);
     sizes.set(top, (sizes.get(top) ?? 0) + size[component]);
   }
-  const largest = Math.max(...sizes.values());
-  const share = largest / nodes;
-  log(`${nodes} nodes in ${sizes.size} components, ${(100 * share).toFixed(2)} % in the largest`);
-  if (share < MIN_LARGEST_COMPONENT) failures.push(`only ${(100 * share).toFixed(2)} % of nodes are in the largest component`);
+  let crossing = 0;
+  for (const [top, nodesIn] of sizes) if (crossesTiles[top]) crossing += nodesIn;
+  const percent = (count: number) => `${((100 * count) / nodes).toFixed(2)} %`;
+  log(
+    `${nodes} nodes in ${sizes.size} components, ${percent(Math.max(...sizes.values()))} in the largest, ` +
+      `${percent(crossing)} in ones that cross a tile edge`,
+  );
+  if (crossing / nodes < MIN_CROSSING_TILES) {
+    failures.push(`only ${percent(crossing)} of nodes are in networks that cross a tile edge`);
+  }
 }
 
 /** Runs of consecutive rows of a sorted tab-separated file that agree on one field. */
