@@ -50,16 +50,15 @@ jobs:
           jq -c '(if type == "array" then .[] else . end) | select(.type == "result") | {subtype, is_error, api_error_status, errors, result: ((.result // "") | tostring | .[0:400])}' "$RUNNER_TEMP/claude-execution-output.json"
       # TEMPORARY: replays the action's exact env with claude -p, removing one suspect at a time.
       - if: failure()
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           echo "flags: $(tr '\n' ' ' < "$RUNNER_TEMP/claude-flags")"
           echo "empty vars: $(sh -c '. "$RUNNER_TEMP/claude-env.sh"; env' | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=$/\1/p' | tr '\n' ' ')"
-          probe() {
-            label=$1; shift
-            sh -c '. "$RUNNER_TEMP/claude-env.sh"; for v in "$@"; do unset "$v"; done; cd "$GITHUB_WORKSPACE"; exec "$HOME/.local/bin/claude" -p "Reply with OK" --model claude-haiku-5-5 --output-format json' probe "$@" \
-              | jq -c --arg label "$label" '{probe: $label, is_error, result: ((.result // "") | .[0:100])}' || echo "{\"probe\": \"$label\", \"crashed\": true}"
-          }
-          probe "action env"
-          probe "minus entrypoint" CLAUDE_CODE_ENTRYPOINT
-          empties=$(sh -c '. "$RUNNER_TEMP/claude-env.sh"; env' | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=$/\1/p')
-          probe "minus all empty vars" $empties
-          for v in $empties; do case $v in ANTHROPIC_*|CLAUDE_*) probe "minus $v" "$v";; esac; done
+          echo "set vars: $(sh -c '. "$RUNNER_TEMP/claude-env.sh"; env' | sed -n 's/^\(\(ANTHROPIC\|CLAUDE\)[A-Za-z0-9_]*\)=..*/\1/p' | tr '\n' ' ')"
+          run_claude() { "$HOME/.local/bin/claude" -p "Reply with OK" --model claude-haiku-5-5 --output-format json; }
+          report() { jq -c --arg label "$1" '{probe: $label, is_error, result: ((.result // "") | .[0:100])}' || echo "{\"probe\": \"$1\", \"crashed\": true}"; }
+          (cd "$GITHUB_WORKSPACE" && run_claude) | report "runner env, repo cwd"
+          (cd "$RUNNER_TEMP" && run_claude) | report "runner env, temp cwd"
+          sh -c '. "$RUNNER_TEMP/claude-env.sh"; cd "$GITHUB_WORKSPACE"; exec "$HOME/.local/bin/claude" -p "Reply with OK" --model claude-haiku-5-5 --output-format json' | report "action env, repo cwd"
+          sh -c '. "$RUNNER_TEMP/claude-env.sh"; cd "$RUNNER_TEMP"; exec "$HOME/.local/bin/claude" -p "Reply with OK" --model claude-haiku-5-5 --output-format json' | report "action env, temp cwd"
