@@ -48,3 +48,4 @@ example
 # local module native build output
 modules/*/android/build/
 .street-noise/
+.walk-graph/

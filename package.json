@@ -53,6 +53,7 @@
     "lint": "expo lint",
     "test": "node --test \"src/**/*.test.ts\"",
     "street-noise": "node scripts/street-noise.ts",
+    "walk-graph": "node scripts/walk-graph.ts",
     "postinstall": "patch-package"
   },
   "private": true
