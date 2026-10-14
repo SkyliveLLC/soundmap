@@ -44,7 +44,7 @@ Preconditions:
 
 - Hexagons and the user-location dot have no accessibility elements. Press them by coordinates.
 - At launch zoom, the location puck covers the measured Hayes Valley hexagon and swallows taps on it. Select it with `View` or the deep link instead.
-- Map tiles come from `tiles.openfreemap.org`, so they need network. The DOT layer comes from `STREET_NOISE_TILES`, which is `R2_URL_PENDING` until the archive is hosted. With no archive, the layer is blank, the hint still says `Colors show…`, taps on unmeasured blocks clear the card, and measured cards have no modeled line. Android dev builds show a MapLibre `Unable to parse resourceUrl R2_URL_PENDING` error toast. Serve the archive locally (SKILL.md, Launch step 0; the repo `README.md`'s "Refresh street noise data").
+- Map tiles come from `tiles.openfreemap.org`, so they need network. The DOT layer comes from `STREET_NOISE_TILES`, the nationwide archive on Cloudflare R2, so it needs network too. Offline, the layer is blank, the hint still says `Colors show…`, taps on unmeasured blocks clear the card, and measured cards have no modeled line. To test a new archive, serve it locally (SKILL.md, Launch step 0; the repo `README.md`'s "Refresh street noise data").
 - A local archive covers only the area it was built for. Zoomed out past it, the larger hexagons stop at its edge.
 - Metro sometimes keeps serving an old bundle after edits, even across `metro reload`. If the screen doesn't reflect a change, `sm stop && sm metro <port>` and relaunch before debugging further.
 - The location dot shows only once location permission is granted. The Map tab never prompts for it.

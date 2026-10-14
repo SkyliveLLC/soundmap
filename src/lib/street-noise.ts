@@ -6,15 +6,17 @@ import { CELL_RESOLUTION, cellAt, type Bounds, type CellAggregate } from './cell
 /** NTNM omits pixels quieter than this, so inside the modeled area "no pixels" means quiet, not unknown. */
 export const DOT_FLOOR_DB = 45;
 
-/** The NTNM release the hosted tiles hold. Bump it together with STREET_NOISE_TILES. */
+/** The NTNM release the hosted tiles hold. Each release is its own file, so bumping this moves every phone to it. */
 export const STREET_NOISE_RELEASE = '2022';
 
 /**
  * US DOT transportation noise (roads, rail and aviation) for the 50 states and DC as one PMTiles archive
- * (built by scripts/street-noise.ts), which MapLibre reads with HTTP range requests.
+ * (built by scripts/street-noise.ts), hosted on Cloudflare R2, which MapLibre reads with HTTP range requests.
  * EXPO_PUBLIC_STREET_NOISE_TILES points a dev build elsewhere.
  */
-export const STREET_NOISE_TILES = process.env.EXPO_PUBLIC_STREET_NOISE_TILES ?? 'R2_URL_PENDING';
+export const STREET_NOISE_TILES =
+  process.env.EXPO_PUBLIC_STREET_NOISE_TILES ??
+  `pmtiles://https://pub-569943dcdebc4f959ef9af5d05e0d5c2.r2.dev/street-noise-${STREET_NOISE_RELEASE}.pmtiles`;
 
 /** Tile layer of hexagons, each with an `laeq` (dBA, 24 h). Only hexagons at or above DOT_FLOOR_DB exist. */
 export const NOISE_LAYER = 'noise';
