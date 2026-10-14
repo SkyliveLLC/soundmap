@@ -6,6 +6,8 @@
  *   2. brew install gdal tippecanoe
  *   3. npm run street-noise -- --release 2022 \
  *        --raster OpenFileGDB:<CONUS gdb>:<layer> --raster OpenFileGDB:<Alaska gdb>:<layer> ...
+ *      CONUS is one raster per state, so it takes one --raster per state layer (`gdalinfo <gdb>` lists
+ *      them as subdatasets). A window on a state line reads both states' rasters.
  *
  * Two stages, both in --out (default .street-noise/):
  *   blocks.tsv                     every block (H3 res 10) with DOT pixels, `cell<TAB>laeq`, sorted.
@@ -23,19 +25,21 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { parseArgs } from 'node:util';
 
-import { CELL_RESOLUTION, type Bounds } from '../src/lib/cells.ts';
+import { CELL_RESOLUTION } from '../src/lib/cells.ts';
 import {
   BLOCK_ZOOM,
   COVERAGE_LAYER,
   NOISE_LAYER,
   NOISE_ZOOMS,
+  type Footprint,
   areaLevels,
+  boxesAround,
   noiseFeature,
+  windowsOver,
 } from '../src/lib/street-noise.ts';
 
 // 50 states and DC (FIPS 1-56; territories start at 60): what NTNM models.
 const STATES = 'https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_us_state_500k.zip';
-const WINDOW_DEG = 1;
 
 const { values } = parseArgs({
   options: {
@@ -58,19 +62,24 @@ const tiles = join(values.out, `street-noise-${release}.pmtiles`);
 await buildTiles(blocks, tiles);
 console.log(`wrote ${tiles}`);
 
-/** Runs scripts/street-noise-window.ts over a 1° grid of every raster, then sorts the blocks by index. */
+/** Runs scripts/street-noise-window.ts over the 1° grid cells any raster reaches, then sorts the blocks by index. */
 async function buildBlocks(rasters: string[], file: string): Promise<string> {
-  const windows = (await Promise.all(rasters.map(async (raster) => gridOver(await extentOf(raster), raster)))).flat();
+  const windows = windowsOver(await Promise.all(rasters.map(footprintOf)));
+  console.log(`${windows.length} windows over ${rasters.length} rasters`);
   const unsorted = `${file}.unsorted`;
   const output = await open(unsorted, 'w');
   const started = Date.now();
   let done = 0;
   try {
-    await runAll(windows, Number(values.jobs), async ({ raster, window }) => {
+    await runAll(windows, Number(values.jobs), async ({ bounds, rasters }) => {
       const child = spawn(
         process.execPath,
-        // `=` because western longitudes start with a dash, which would read as an option.
-        [join(import.meta.dirname, 'street-noise-window.ts'), '--raster', raster, `--window=${window.join(',')}`],
+        [
+          join(import.meta.dirname, 'street-noise-window.ts'),
+          ...rasters.flatMap((raster) => ['--raster', raster]),
+          // `=` because western longitudes start with a dash, which would read as an option.
+          `--window=${bounds.join(',')}`,
+        ],
         { stdio: ['ignore', 'pipe', 'inherit'] },
       );
       const chunks: Buffer[] = [];
@@ -122,7 +131,7 @@ async function buildTiles(blocksFile: string, file: string): Promise<void> {
       const [cell, level] = line.split('\t');
       const laeq = Number(level);
       if (cell.length !== 15 || !Number.isFinite(laeq)) throw new Error(`blocks: bad line "${line}"`);
-      // Windows own disjoint blocks, so a repeat means two rasters overlap.
+      // Each window owns the blocks centered in it, so a repeat is a bug in the grid.
       if (cell <= previous) throw new Error(`blocks: ${cell} is ${cell === previous ? 'repeated' : 'out of order'}`);
       previous = cell;
       await write(noiseFeature(cell, laeq));
@@ -139,19 +148,12 @@ async function buildTiles(blocksFile: string, file: string): Promise<void> {
 /** The 50 states and DC dissolved into one feature, in block tiles only: the app reads it on a tap. */
 async function coverageFeature(): Promise<string> {
   const layer = STATES.split('/').at(-1)!.replace('.zip', '');
-  const ogr = spawn(
-    'ogr2ogr',
-    [
-      ...['-f', 'GeoJSONSeq', '/vsistdout/', `/vsizip//vsicurl/${STATES}`, '-dialect', 'sqlite'],
-      ...['-sql', `SELECT ST_Union(geometry) AS geometry FROM ${layer} WHERE CAST(STATEFP AS INTEGER) <= 56`],
-      ...['-t_srs', 'EPSG:4326', '-lco', 'COORDINATE_PRECISION=6'],
-    ],
-    { stdio: ['ignore', 'pipe', 'inherit'] },
-  );
-  const chunks: Buffer[] = [];
-  for await (const chunk of ogr.stdout) chunks.push(chunk);
-  await succeeded(ogr);
-  const { geometry } = JSON.parse(Buffer.concat(chunks).toString().replace(/^\x1e/, ''));
+  const union = await output('ogr2ogr', [
+    ...['-f', 'GeoJSONSeq', '/vsistdout/', `/vsizip//vsicurl/${STATES}`, '-dialect', 'sqlite'],
+    ...['-sql', `SELECT ST_Union(geometry) AS geometry FROM ${layer} WHERE CAST(STATEFP AS INTEGER) <= 56`],
+    ...['-t_srs', 'EPSG:4326', '-lco', 'COORDINATE_PRECISION=6'],
+  ]);
+  const { geometry } = JSON.parse(union.replace(/^\x1e/, ''));
   return JSON.stringify({
     type: 'Feature',
     tippecanoe: { layer: COVERAGE_LAYER, minzoom: BLOCK_ZOOM, maxzoom: BLOCK_ZOOM },
@@ -160,26 +162,38 @@ async function coverageFeature(): Promise<string> {
   });
 }
 
-async function extentOf(raster: string): Promise<Bounds> {
-  const info = spawn('gdalinfo', ['-json', raster], { stdio: ['ignore', 'pipe', 'inherit'] });
-  const chunks: Buffer[] = [];
-  for await (const chunk of info.stdout) chunks.push(chunk);
-  await succeeded(info);
-  const { wgs84Extent } = JSON.parse(Buffer.concat(chunks).toString());
-  const ring: [number, number][] = wgs84Extent.coordinates[0];
-  const lngs = ring.map(([lng]) => lng);
-  const lats = ring.map(([, lat]) => lat);
-  return [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)];
+/**
+ * The raster's edge in lng/lat, sampled every 1/64 of each side rather than at the corners: the
+ * rasters are Albers grids, so an edge is an arc (Alaska's top edge rises 4° between its corners,
+ * and its northwest corner is past 180°).
+ */
+async function footprintOf(raster: string): Promise<Footprint> {
+  const [width, height]: [number, number] = JSON.parse(await output('gdalinfo', ['-json', raster])).size;
+  const along = Array.from({ length: 64 }, (_, i) => i / 64);
+  const edge = [
+    ...along.map((t) => [t * width, 0]),
+    ...along.map((t) => [width, t * height]),
+    ...along.map((t) => [(1 - t) * width, height]),
+    ...along.map((t) => [0, (1 - t) * height]),
+  ];
+  // With the raster as its source, gdaltransform takes pixel/line coordinates.
+  const lngLat = await output(
+    'gdaltransform',
+    ['-t_srs', 'EPSG:4326', '-output_xy', raster],
+    edge.map((point) => point.join(' ')).join('\n'),
+  );
+  const ring = lngLat.trim().split('\n').map((line) => line.split(' ').map(Number) as [number, number]);
+  return { raster, boxes: boxesAround(ring) };
 }
 
-function gridOver([west, south, east, north]: Bounds, raster: string): { raster: string; window: Bounds }[] {
-  const windows: { raster: string; window: Bounds }[] = [];
-  for (let lng = Math.floor(west); lng < east; lng += WINDOW_DEG) {
-    for (let lat = Math.floor(south); lat < north; lat += WINDOW_DEG) {
-      windows.push({ raster, window: [lng, lat, lng + WINDOW_DEG, lat + WINDOW_DEG] });
-    }
-  }
-  return windows;
+/** Runs a command to completion and returns its stdout. */
+async function output(command: string, args: string[], input?: string): Promise<string> {
+  const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'inherit'] });
+  child.stdin.end(input);
+  const chunks: Buffer[] = [];
+  for await (const chunk of child.stdout) chunks.push(chunk);
+  await succeeded(child);
+  return Buffer.concat(chunks).toString();
 }
 
 async function runAll<T>(items: T[], jobs: number, run: (item: T) => Promise<void>): Promise<void> {

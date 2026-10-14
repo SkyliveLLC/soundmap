@@ -90,14 +90,14 @@ The map reads street noise from `street-noise-<release>.pmtiles`, a single file 
 
 1. In a browser, download the road noise zips for CONUS, Alaska and Hawaii from the [NTNM page](https://www.bts.gov/geospatial/national-transportation-noise-map) and unzip them. The server blocks curl.
 2. Install the tools: `brew install gdal tippecanoe`. GDAL reads the File Geodatabase rasters; tippecanoe writes the tiles.
-3. Run the pipeline with one `--raster` per raster. Its layer is the `RASTER_DATASET` that `gdalinfo <gdb>` prints, such as `HI_road_noise`:
+3. Run the pipeline with one `--raster` per raster. Its layer is the `RASTER_DATASET` that `gdalinfo <gdb>` prints, such as `HI_road_noise`. CONUS is one raster per state, so it takes 49 of them:
 
    ```bash
    npm run street-noise -- --release 2022 \
-     --raster OpenFileGDB:<CONUS gdb>:<layer> --raster OpenFileGDB:<Alaska gdb>:<layer> --raster OpenFileGDB:<Hawaii gdb>:<layer>
+     --raster OpenFileGDB:<CONUS gdb>:<state layer>... --raster OpenFileGDB:<Alaska gdb>:<layer> --raster OpenFileGDB:<Hawaii gdb>:<layer>
    ```
 
-   It reads the rasters in 1° windows in parallel, into `.street-noise/blocks.tsv` (one line per block). That takes hours for the whole country, so `--blocks .street-noise/blocks.tsv` rebuilds only the tiles from an earlier run. The tiles also carry the modeled area (the 50 states and DC, from Census cartographic boundaries), which tells a quiet block from one DOT doesn't model.
+   It reads the rasters in 1° windows in parallel, into `.street-noise/blocks.tsv` (one line per block). A window on a state line reads both states' rasters, so a block there averages pixels from each side. That takes hours for the whole country, so `--blocks .street-noise/blocks.tsv` rebuilds only the tiles from an earlier run. The tiles also carry the modeled area (the 50 states and DC, from Census cartographic boundaries), which tells a quiet block from one DOT doesn't model.
 4. Upload the archive to the Cloudflare R2 bucket with [rclone](https://rclone.org/s3/#cloudflare-r2), set up once as a remote named `r2` with your R2 API keys (the dashboard can't upload files this large): `rclone copyto .street-noise/street-noise-2022.pmtiles r2:<bucket>/street-noise-2022.pmtiles`. Then set `STREET_NOISE_RELEASE` and `STREET_NOISE_TILES` in `src/lib/street-noise.ts`. A new release gets a new file name, so phones never mix two releases.
 
 To try tiles before uploading them, serve `.street-noise/` with any server that supports range requests (`npx http-server .street-noise -p 8791`) and point a dev build at it in `.env.local`: `EXPO_PUBLIC_STREET_NOISE_TILES=pmtiles://http://127.0.0.1:8791/street-noise-2022.pmtiles`.
