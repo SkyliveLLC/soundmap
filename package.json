@@ -54,6 +54,7 @@
     "test": "node --test \"src/**/*.test.ts\"",
     "street-noise": "node scripts/street-noise.ts",
     "walk-graph": "node scripts/walk-graph.ts",
+    "walk-graph-check": "node scripts/walk-graph-check.ts",
     "postinstall": "patch-package"
   },
   "private": true
