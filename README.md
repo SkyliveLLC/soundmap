@@ -113,7 +113,6 @@ You need the phone, a speaker that plays steady pink noise, a quiet room, and a 
 
 ## Roadmap
 
-- Rail and aviation noise.
 - Calibrate the most common phone models.
 - Quiet walking routes.
 
