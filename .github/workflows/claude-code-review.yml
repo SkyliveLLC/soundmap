@@ -56,9 +56,15 @@ jobs:
           echo "flags: $(tr '\n' ' ' < "$RUNNER_TEMP/claude-flags")"
           echo "empty vars: $(sh -c '. "$RUNNER_TEMP/claude-env.sh"; env' | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=$/\1/p' | tr '\n' ' ')"
           echo "set vars: $(sh -c '. "$RUNNER_TEMP/claude-env.sh"; env' | sed -n 's/^\(\(ANTHROPIC\|CLAUDE\)[A-Za-z0-9_]*\)=..*/\1/p' | tr '\n' ' ')"
-          run_claude() { "$HOME/.local/bin/claude" -p "Reply with OK" --model claude-haiku-5-5 --output-format json; }
-          report() { jq -c --arg label "$1" '{probe: $label, is_error, result: ((.result // "") | .[0:100])}' || echo "{\"probe\": \"$1\", \"crashed\": true}"; }
-          (cd "$GITHUB_WORKSPACE" && run_claude) | report "runner env, repo cwd"
-          (cd "$RUNNER_TEMP" && run_claude) | report "runner env, temp cwd"
-          sh -c '. "$RUNNER_TEMP/claude-env.sh"; cd "$GITHUB_WORKSPACE"; exec "$HOME/.local/bin/claude" -p "Reply with OK" --model claude-haiku-5-5 --output-format json' | report "action env, repo cwd"
-          sh -c '. "$RUNNER_TEMP/claude-env.sh"; cd "$RUNNER_TEMP"; exec "$HOME/.local/bin/claude" -p "Reply with OK" --model claude-haiku-5-5 --output-format json' | report "action env, temp cwd"
+          probe() {
+            label=$1; shift
+            sh -c '. "$RUNNER_TEMP/claude-env.sh"; for v in "$@"; do unset "$v"; done; cd "$GITHUB_WORKSPACE"; exec "$HOME/.local/bin/claude" -p "Reply with OK" --model claude-haiku-5-5 --output-format json' probe "$@" \
+              | jq -c --arg label "$label" '{probe: $label, is_error, result: ((.result // "") | .[0:100])}' || echo "{\"probe\": \"$label\", \"crashed\": true}"
+          }
+          empties=$(sh -c '. "$RUNNER_TEMP/claude-env.sh"; env' | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=$/\1/p')
+          markers="CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_ACTION CLAUDE_CODE_SDK_READS_SESSION_STATE CLAUDE_AGENT_SDK_VERSION CLAUDE_ARGS"
+          probe "minus markers + empties" $markers $empties
+          probe "minus markers" $markers
+          probe "minus entrypoint + empties" CLAUDE_CODE_ENTRYPOINT $empties
+          for m in $markers; do probe "minus $m + empties" "$m" $empties; done
+          for m in $markers; do probe "only $m kept, minus empties" $(echo $markers | tr ' ' '\n' | grep -vx "$m") $empties; done
