@@ -10,7 +10,13 @@ import {
   type ViewState,
 } from '@maplibre/maplibre-react-native';
 import { useQuery } from 'convex/react';
-import { getForegroundPermissionsAsync, getLastKnownPositionAsync } from 'expo-location';
+import {
+  Accuracy,
+  getCurrentPositionAsync,
+  getForegroundPermissionsAsync,
+  getLastKnownPositionAsync,
+  requestForegroundPermissionsAsync,
+} from 'expo-location';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { cellToLatLng } from 'h3-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -18,9 +24,21 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../../convex/_generated/api';
+import { RouteCard } from '@/components/route-card';
+import { RouteLayers } from '@/components/route-layers';
 import { VenueDetail } from '@/components/venue-detail';
-import { MAX_REGIONS, cellAt, cellPolygon, cellsToGeoJSON, regionsIn, type CellAggregate } from '@/lib/cells';
+import { useWalkPlan } from '@/hooks/use-walk-plan';
+import {
+  MAX_REGIONS,
+  cellAt,
+  cellPolygon,
+  cellsToGeoJSON,
+  regionsIn,
+  type CellAggregate,
+  type LngLat,
+} from '@/lib/cells';
 import { LOUDNESS_COLOR, loudnessBand, type LoudnessBand } from '@/lib/loudness';
+import { formatLngLat, parseLngLat, parseQuietPreset } from '@/lib/quiet-routes';
 import {
   BLOCK_ZOOM,
   DOT_FLOOR_DB,
@@ -39,6 +57,8 @@ const MAP_STYLE = 'https://tiles.openfreemap.org/styles/positron';
 // The lower 48, for a launch that doesn't know where you are.
 const CONTINENTAL_US: InitialViewState = { center: [-98.6, 39.8], zoom: 3 };
 const LOCAL_ZOOM = 13;
+// Room the camera leaves under a fitted walk for the route card.
+const ROUTE_CARD_CLEARANCE = 280;
 const CELL_ZOOM = 15;
 const VENUE_ZOOM = 16;
 // Measured hexagons are blocks, too small to see further out, so the map only loads them from here in.
@@ -51,10 +71,18 @@ export default function MapScreen() {
   const colors = usePalette();
   const insets = useSafeAreaInsets();
   const camera = useRef<CameraRef>(null);
-  // The selected cell or venue (an OpenStreetMap id) lives in the route so "Added to map · View" can open the map on it.
-  const { cell: selectedCell, venue: selectedVenue } = useLocalSearchParams<{ cell?: string; venue?: string }>();
+  // The selected cell or venue (an OpenStreetMap id) lives in the route so "Added to map · View" can open the map
+  // on it. So do a walk's ends ("lng,lat") and preset, which never leave the phone.
+  const {
+    cell: selectedCell,
+    venue: selectedVenue,
+    from,
+    to,
+    quiet,
+  } = useLocalSearchParams<{ cell?: string; venue?: string; from?: string; to?: string; quiet?: string }>();
   const [initialCell] = useState(selectedCell);
   const [initialVenue] = useState(selectedVenue);
+  const [initialTo] = useState(to);
   const [view, setView] = useState<Pick<ViewState, 'zoom' | 'bounds'>>();
   const aggregates = useMeasuredCells(view);
   // Every measured venue, kept live by Convex. Undefined until the first result arrives.
@@ -65,6 +93,14 @@ export default function MapScreen() {
   // The cell or venue the last map tap selected. Only selections from elsewhere ("View") move the camera.
   const tappedSelection = useRef<string | undefined>(undefined);
   const venue = venues?.find(({ osmId }) => osmId === selectedVenue);
+  const start = parseLngLat(from);
+  const end = parseLngLat(to);
+  const preset = parseQuietPreset(quiet) ?? 'quieter';
+  const walk = useWalkPlan(start, end);
+  const plan = walk.kind === 'planned' ? walk.plan : null;
+  const choice = plan?.choices.find((candidate) => candidate.preset === preset) ?? plan?.choices[0];
+  // The (from, to) the camera last fitted, so a plan that changes later (a measurement, a preset) leaves it be.
+  const fittedTrip = useRef<string | undefined>(undefined);
 
   // "Add to map" may have just granted location. Only reads the permission: the prompt belongs to "Add to map".
   useFocusEffect(
@@ -73,9 +109,9 @@ export default function MapScreen() {
     }, []),
   );
 
-  // Opens where you are when the phone already knows it, unless the map was opened on a cell or venue.
+  // Opens where you are when the phone already knows it, unless the map was opened on a cell, venue or walk.
   useEffect(() => {
-    if (initialCell || initialVenue) return;
+    if (initialCell || initialVenue || initialTo) return;
     getForegroundPermissionsAsync()
       .then(({ granted }) => (granted ? getLastKnownPositionAsync() : null))
       .then((position) => {
@@ -83,7 +119,7 @@ export default function MapScreen() {
         const { longitude, latitude } = position.coords;
         camera.current?.jumpTo({ center: [longitude, latitude], zoom: LOCAL_ZOOM });
       });
-  }, [initialCell, initialVenue]);
+  }, [initialCell, initialVenue, initialTo]);
 
   // A venue just measured may not be in `venues` yet, so this runs again once its position arrives.
   const venueLatitude = venue?.latitude;
@@ -110,6 +146,32 @@ export default function MapScreen() {
     };
   }, [selectedCell]);
 
+  const planned = plan !== null;
+  useEffect(() => {
+    if (!planned || !start || !end) return;
+    const trip = `${formatLngLat(start)} ${formatLngLat(end)}`;
+    if (fittedTrip.current === trip) return;
+    fittedTrip.current = trip;
+    camera.current?.fitBounds(
+      [Math.min(start[0], end[0]), Math.min(start[1], end[1]), Math.max(start[0], end[0]), Math.max(start[1], end[1])],
+      { padding: { top: insets.top + 48, right: 48, bottom: ROUTE_CARD_CLEARANCE, left: 48 }, duration: 800 },
+    );
+  }, [planned, start, end, insets.top]);
+
+  // Denied or no fix: nothing changes, and the card keeps asking for a long-press.
+  const startHere = async () => {
+    const { granted } = await requestForegroundPermissionsAsync();
+    if (!granted) return;
+    setLocationGranted(true);
+    // Without a fresh fix (indoors, or location services just turned on) the last known one is still where you are.
+    const position = await getCurrentPositionAsync({ accuracy: Accuracy.Balanced })
+      .catch(() => getLastKnownPositionAsync())
+      .catch(() => null);
+    if (!position) return;
+    const here: LngLat = [position.coords.longitude, position.coords.latitude];
+    router.setParams({ from: formatLngLat(here) });
+  };
+
   const readingAt = (cell: string, level = street?.cell === cell ? street.level : undefined) =>
     readCell(
       cell,
@@ -129,14 +191,24 @@ export default function MapScreen() {
         attributionPosition={{ top: insets.top + 8, left: 8 }}
         // Any tap selects the block under it, so a quiet street can answer too. A block with nothing to
         // show clears the card instead: unmeasured and outside the DOT area, or too far out to see,
-        // where the colors are areas rather than blocks.
+        // where the colors are areas rather than blocks. Tapping the selected block again clears it, which
+        // is how a walk's card comes back.
         onPress={async (event) => {
           const [longitude, latitude] = event.nativeEvent.lngLat;
           const cell = cellAt(latitude, longitude);
           const level = (view?.zoom ?? 0) >= BLOCK_ZOOM ? await readStreet(cell).catch(() => undefined) : undefined;
           if (level) setStreet({ cell, level });
-          tappedSelection.current = readingAt(cell, level) ? cell : undefined;
+          tappedSelection.current = cell !== selectedCell && readingAt(cell, level) ? cell : undefined;
           router.setParams({ cell: tappedSelection.current, venue: undefined });
+        }}
+        // While the card asks for a start, a long-press sets it. Otherwise it sets a (new) end.
+        onLongPress={({ nativeEvent: { lngLat } }) => {
+          const point = formatLngLat(lngLat);
+          router.setParams(
+            end && !start
+              ? { from: point, cell: undefined, venue: undefined }
+              : { to: point, cell: undefined, venue: undefined },
+          );
         }}
         onRegionDidChange={({ nativeEvent: { zoom, bounds } }) => setView({ zoom, bounds })}
       >
@@ -163,6 +235,13 @@ export default function MapScreen() {
             />
           </GeoJSONSource>
         )}
+        <RouteLayers
+          shortest={choice ? (plan?.shortest ?? null) : null}
+          route={choice?.route ?? plan?.shortest ?? null}
+          from={start}
+          to={end}
+          colors={colors}
+        />
         <GeoJSONSource
           id="venues"
           data={venuesToGeoJSON(venues ?? [])}
@@ -196,6 +275,20 @@ export default function MapScreen() {
         </View>
       ) : reading ? (
         <CellCard reading={reading} colors={colors} />
+      ) : end ? (
+        <View style={[styles.card, { backgroundColor: colors.background }]}>
+          <RouteCard
+            state={walk}
+            from={start}
+            preset={preset}
+            colors={colors}
+            onPreset={(next) => router.setParams({ quiet: next })}
+            onStartHere={startHere}
+            onChangeStart={() => router.setParams({ from: undefined })}
+            onSwap={() => router.setParams({ from: to, to: from })}
+            onClose={() => router.setParams({ from: undefined, to: undefined, quiet: undefined })}
+          />
+        </View>
       ) : (
         aggregates?.length === 0 && (
           <View style={[styles.card, { backgroundColor: colors.background }]}>

@@ -44,7 +44,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Soundmap uses your location only when you add a measurement to the map. It is rounded to a small area around you; your exact position is never stored."
+          "locationWhenInUsePermission": "Soundmap uses your location when you add a measurement to the map or plan a walk from where you are. A measurement is rounded to a small area around you, and a walk is planned on your phone. Your exact position is never stored or sent."
         }
       ],
       "expo-secure-store"
