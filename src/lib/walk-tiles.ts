@@ -1,9 +1,8 @@
 import { h3IndexToSplitLong, splitLongToH3Index } from 'h3-js';
-import { PMTiles } from 'pmtiles';
 
 import { cellAt, type Bounds } from './cells.ts';
 import { STREET_NOISE_RELEASE, type StreetLevel } from './street-noise.ts';
-import { tilePosition } from './street-noise-tiles.ts';
+import { tilePosition, tileReader } from './street-noise-tiles.ts';
 
 /** OSM snapshot the walking graph was cut from. */
 export const WALK_GRAPH_RELEASE = '2026-10';
@@ -176,26 +175,7 @@ const CACHED_TILES = 32;
  * failed tile isn't cached, so the next call retries. Keeps the last CACHED_TILES decoded tiles.
  */
 export function walkTilesReader(url: string): (bounds: Bounds) => Promise<readonly WalkTile[]> {
-  const source = url.replace(/^pmtiles:\/\//, '');
-  let archive = new PMTiles(source);
-  const tiles = new Map<string, Promise<WalkTile | null>>();
-
-  const tileAt = (x: number, y: number) => {
-    const key = `${x}/${y}`;
-    let tile = tiles.get(key);
-    if (!tile) {
-      const reading = archive;
-      tile = reading.getZxy(WALK_ZOOM, x, y).then((found) => (found ? decodeWalkTile(new Uint8Array(found.data)) : null));
-      tile.catch(() => {
-        tiles.delete(key);
-        // PMTiles keeps a failed header read for good, so the next call starts over with a fresh archive.
-        if (archive === reading) archive = new PMTiles(source);
-      });
-      tiles.set(key, tile);
-      if (tiles.size > CACHED_TILES) tiles.delete(tiles.keys().next().value!);
-    }
-    return tile;
-  };
+  const tileAt = tileReader(url, WALK_ZOOM, CACHED_TILES, (bytes) => decodeWalkTile(new Uint8Array(bytes)));
 
   return async ([west, south, east, north]) => {
     const northWest = tilePosition(north, west, WALK_ZOOM);

@@ -16,21 +16,7 @@ const CACHED_TILES = 8;
  * outside every tile is not covered. Rejects when the archive can't be read, such as offline.
  */
 export function streetNoiseReader(url: string): (cell: string) => Promise<StreetLevel> {
-  const archive = new PMTiles(url.replace(/^pmtiles:\/\//, ''));
-  const tiles = new Map<string, Promise<VectorTile | null>>();
-
-  const tileAt = (x: number, y: number) => {
-    const key = `${x}/${y}`;
-    let tile = tiles.get(key);
-    if (!tile) {
-      tile = archive.getZxy(BLOCK_ZOOM, x, y).then((found) => (found ? new VectorTile(new PbfReader(found.data)) : null));
-      // A failed fetch isn't kept, so the next tap tries again.
-      tile.catch(() => tiles.delete(key));
-      tiles.set(key, tile);
-      if (tiles.size > CACHED_TILES) tiles.delete(tiles.keys().next().value!);
-    }
-    return tile;
-  };
+  const tileAt = tileReader(url, BLOCK_ZOOM, CACHED_TILES, (bytes) => new VectorTile(new PbfReader(bytes)));
 
   return async (cell) => {
     const [latitude, longitude] = cellToLatLng(cell);
@@ -48,6 +34,39 @@ export function streetNoiseReader(url: string): (cell: string) => Promise<Street
     const laeq24h = noise?.properties.laeq;
     if (typeof laeq24h === 'number') return { kind: 'modeled', laeq24h };
     return contains(COVERAGE_LAYER).length > 0 ? { kind: 'below-floor' } : { kind: 'not-covered' };
+  };
+}
+
+/**
+ * Reads tiles at one zoom from a PMTiles archive (`pmtiles://` or plain URL), decoded once and kept for the last
+ * `cachedTiles` tiles. Resolves null for a tile the archive lacks. A failed read isn't kept, so the next call
+ * retries it.
+ */
+export function tileReader<T>(
+  url: string,
+  zoom: number,
+  cachedTiles: number,
+  decode: (bytes: ArrayBuffer) => T,
+): (x: number, y: number) => Promise<T | null> {
+  const source = url.replace(/^pmtiles:\/\//, '');
+  let archive = new PMTiles(source);
+  const tiles = new Map<string, Promise<T | null>>();
+
+  return (x, y) => {
+    const key = `${x}/${y}`;
+    let tile = tiles.get(key);
+    if (!tile) {
+      const reading = archive;
+      tile = reading.getZxy(zoom, x, y).then((found) => (found ? decode(found.data) : null));
+      tile.catch(() => {
+        tiles.delete(key);
+        // PMTiles keeps a failed header read for good, so the next call starts over with a fresh archive.
+        if (archive === reading) archive = new PMTiles(source);
+      });
+      tiles.set(key, tile);
+      if (tiles.size > cachedTiles) tiles.delete(tiles.keys().next().value!);
+    }
+    return tile;
   };
 }
 

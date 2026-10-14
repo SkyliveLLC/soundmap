@@ -3,7 +3,22 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { insideRings, tilePosition } from './street-noise-tiles.ts';
+import { insideRings, streetNoiseReader, tilePosition } from './street-noise-tiles.ts';
+
+const CITY_HALL_SAN_FRANCISCO = '8a2830828747fff';
+
+test('a read after an offline one reaches the network again', async (t) => {
+  let requests = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    requests++;
+    if (requests === 1) throw new TypeError('Network request failed');
+    return new Response(null, { status: 503 });
+  });
+  const read = streetNoiseReader('pmtiles://https://tiles.example/street-noise.pmtiles');
+  await assert.rejects(read(CITY_HALL_SAN_FRANCISCO), { message: 'Network request failed' });
+  await assert.rejects(read(CITY_HALL_SAN_FRANCISCO), { message: 'Bad response code: 503' });
+  assert.equal(requests, 2);
+});
 
 test('a point maps to its Web Mercator tile and its place inside it', () => {
   // Zoom 12 tile 655/1583 covers central San Francisco.
