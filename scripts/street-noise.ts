@@ -1,7 +1,8 @@
 /**
- * Builds the street noise tiles from the US DOT National Transportation Noise Map (NTNM) road layers.
+ * Builds the street noise tiles from the US DOT National Transportation Noise Map (NTNM) all-modes layers.
  *
- *   1. In a browser, download the CONUS, Alaska and Hawaii road noise zips from
+ *   1. In a browser, download the "Aviation, Rail, and Road Noise" zips for CONUS and Alaska, and
+ *      "Hawaii Aviation and Road Noise" (Hawaii has no rail layer), from
  *      https://www.bts.gov/geospatial/national-transportation-noise-map and unzip them. Akamai blocks curl.
  *   2. brew install gdal tippecanoe
  *   3. npm run street-noise -- --release 2022 \
@@ -113,7 +114,7 @@ async function buildTiles(blocksFile: string, file: string): Promise<void> {
       ...['-Z', String(NOISE_ZOOMS[0].minzoom), '-z', String(BLOCK_ZOOM)],
       // Every hexagon is drawn exactly, at every zoom it belongs to.
       ...['--no-feature-limit', '--no-tile-size-limit', '--no-tiny-polygon-reduction', '--no-line-simplification'],
-      ...['-n', 'Soundmap street noise', '-N', `US DOT NTNM ${release} road noise on H3 hexagons`],
+      ...['-n', 'Soundmap street noise', '-N', `US DOT NTNM ${release} road, rail and aviation noise on H3 hexagons`],
       ...['-A', `US DOT BTS National Transportation Noise Map ${release}`],
     ],
     { stdio: ['pipe', 'inherit', 'inherit'] },

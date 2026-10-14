@@ -10,8 +10,9 @@ export const DOT_FLOOR_DB = 45;
 export const STREET_NOISE_RELEASE = '2022';
 
 /**
- * US DOT road noise for the 50 states and DC as one PMTiles archive (built by scripts/street-noise.ts),
- * which MapLibre reads with HTTP range requests. EXPO_PUBLIC_STREET_NOISE_TILES points a dev build elsewhere.
+ * US DOT transportation noise (roads, rail and aviation) for the 50 states and DC as one PMTiles archive
+ * (built by scripts/street-noise.ts), which MapLibre reads with HTTP range requests.
+ * EXPO_PUBLIC_STREET_NOISE_TILES points a dev build elsewhere.
  */
 export const STREET_NOISE_TILES = process.env.EXPO_PUBLIC_STREET_NOISE_TILES ?? 'R2_URL_PENDING';
 
@@ -36,7 +37,7 @@ export const NOISE_ZOOMS = [
   { resolution: CELL_RESOLUTION, minzoom: BLOCK_ZOOM, maxzoom: BLOCK_ZOOM },
 ] as const;
 
-/** Modeled road noise for one H3 cell. Three states because "no number" means two different things. */
+/** Modeled transportation noise for one H3 cell. Three states because "no number" means two different things. */
 export type StreetLevel = { kind: 'modeled'; laeq24h: number } | { kind: 'below-floor' } | { kind: 'not-covered' };
 
 /**
