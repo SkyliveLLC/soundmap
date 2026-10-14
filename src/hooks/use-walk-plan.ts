@@ -1,4 +1,4 @@
-import { useQuery } from 'convex/react';
+import { useQuery_experimental } from 'convex/react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { api } from '../../convex/_generated/api';
@@ -27,13 +27,14 @@ type TileRead = { trip: Trip } & (
 /**
  * Everything the route card shows for two points. Idle until both exist. The plan is derived from (tiles,
  * measured, from, to), so a measurement that lands mid-view replans. It waits up to MEASURED_GRACE_MS for
- * measured blocks so the first plan is the measured one, and a Convex that never answers can't hang it.
+ * measured blocks so the first plan is the measured one, and a Convex that never answers, or answers with
+ * an error, can't hang it.
  */
 export function useWalkPlan(from: LngLat | null, to: LngLat | null): WalkState {
   const area = from && to ? tripArea(from, to) : null;
   const inArea = area?.kind === 'area' ? area : null;
   const regions = inArea && inArea.regions.length <= MAX_REGIONS ? inArea.regions : null;
-  const measured = useQuery(api.measurements.cells, regions ? { regions } : 'skip');
+  const measured = useQuery_experimental({ query: api.measurements.cells, args: regions ? { regions } : 'skip' });
 
   // A new object only when an end moves, so the tile read and the plan run once per trip whether or not the
   // caller keeps `from` and `to` referentially stable.
@@ -70,7 +71,11 @@ export function useWalkPlan(from: LngLat | null, to: LngLat | null): WalkState {
   const tiles = !stale && read?.trip === trip && read.kind === 'tiles' ? read : null;
   // Undefined while still worth waiting for. Null plans on modeled noise alone.
   const measuredInput: readonly CellAggregate[] | null | undefined =
-    measured ?? (regions && !tiles?.graceOver ? undefined : null);
+    measured.status === 'success'
+      ? measured.data
+      : measured.status === 'pending' && regions && !tiles?.graceOver
+        ? undefined
+        : null;
   const tileList = tiles?.tiles;
   const outcome = useMemo(() => {
     if (!trip || !tileList || measuredInput === undefined) return null;
