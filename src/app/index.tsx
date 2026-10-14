@@ -9,7 +9,7 @@ import {
   type InitialViewState,
   type ViewState,
 } from '@maplibre/maplibre-react-native';
-import { useQuery } from 'convex/react';
+import { useQuery_experimental } from 'convex/react';
 import {
   Accuracy,
   getCurrentPositionAsync,
@@ -84,9 +84,10 @@ export default function MapScreen() {
   const [initialVenue] = useState(selectedVenue);
   const [initialTo] = useState(to);
   const [view, setView] = useState<Pick<ViewState, 'zoom' | 'bounds'>>();
-  const aggregates = useMeasuredCells(view);
-  // Every measured venue, kept live by Convex. Undefined until the first result arrives.
-  const venues = useQuery(api.venues.list);
+  const { shown: aggregates, failed: cellsFailed } = useMeasuredCells(view);
+  const venueQuery = useQuery_experimental({ query: api.venues.list, args: {} });
+  const venues = venueQuery.status === 'success' ? venueQuery.data : undefined;
+  const sharedDown = cellsFailed || venueQuery.status === 'error';
   // Street noise of the selected cell, read from the tiles.
   const [street, setStreet] = useState<{ cell: string; level: StreetLevel }>();
   const [locationGranted, setLocationGranted] = useState(false);
@@ -179,6 +180,11 @@ export default function MapScreen() {
       level ?? UNKNOWN_STREET,
     );
   const reading = selectedCell && !venue ? readingAt(selectedCell) : null;
+  const hint = sharedDown
+    ? "Can't load shared measurements right now. Colors show modeled transportation noise."
+    : aggregates?.length === 0
+      ? 'Colors show modeled transportation noise. Measure a spot to add yours.'
+      : null;
 
   return (
     <View style={styles.screen}>
@@ -290,11 +296,9 @@ export default function MapScreen() {
           />
         </View>
       ) : (
-        aggregates?.length === 0 && (
+        hint && (
           <View style={[styles.card, { backgroundColor: colors.background }]}>
-            <Text style={[styles.hint, { color: colors.muted }]}>
-              Colors show modeled transportation noise. Measure a spot to add yours.
-            </Text>
+            <Text style={[styles.hint, { color: colors.muted }]}>{hint}</Text>
           </View>
         )
       )}
@@ -308,19 +312,19 @@ function initialViewOf(cell: string | undefined): InitialViewState {
   return { center: [longitude, latitude], zoom: CELL_ZOOM };
 }
 
-/**
- * Everyone's measured hexagons in view, kept live by Convex. Undefined until the first result. Keeps
- * showing the last result while a panned-to view loads, and when zoomed out too far to load any.
- */
-function useMeasuredCells(view: Pick<ViewState, 'zoom' | 'bounds'> | undefined): CellAggregate[] | undefined {
+// A failed query keeps the last shown result: Convex retries it on its own once the deployment changes.
+function useMeasuredCells(view: Pick<ViewState, 'zoom' | 'bounds'> | undefined): {
+  shown: CellAggregate[] | undefined;
+  failed: boolean;
+} {
   const regions = view && view.zoom >= MEASURED_ZOOM ? regionsIn(view.bounds) : [];
-  const latest = useQuery(
-    api.measurements.cells,
-    regions.length > 0 && regions.length <= MAX_REGIONS ? { regions } : 'skip',
-  );
-  const [shown, setShown] = useState(latest);
-  if (latest !== undefined && latest !== shown) setShown(latest);
-  return shown;
+  const latest = useQuery_experimental({
+    query: api.measurements.cells,
+    args: regions.length > 0 && regions.length <= MAX_REGIONS ? { regions } : 'skip',
+  });
+  const [shown, setShown] = useState(latest.status === 'success' ? latest.data : undefined);
+  if (latest.status === 'success' && latest.data !== shown) setShown(latest.data);
+  return { shown, failed: latest.status === 'error' };
 }
 
 function CellCard({ reading, colors }: { reading: CellReading; colors: Palette }) {
