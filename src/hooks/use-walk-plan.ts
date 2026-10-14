@@ -38,7 +38,8 @@ export function useWalkPlan(from: LngLat | null, to: LngLat | null): WalkState {
   // caller keeps `from` and `to` referentially stable.
   const [trip, setTrip] = useState<Trip | null>(null);
   const next = inArea && from && to ? { key: `${from.join()} ${to.join()}`, from, to, bounds: inArea.bounds } : null;
-  if ((trip?.key ?? null) !== (next?.key ?? null)) setTrip(next);
+  const stale = (trip?.key ?? null) !== (next?.key ?? null);
+  if (stale) setTrip(next);
 
   const [read, setRead] = useState<TileRead>();
   useEffect(() => {
@@ -61,7 +62,9 @@ export function useWalkPlan(from: LngLat | null, to: LngLat | null): WalkState {
     };
   }, [trip]);
 
-  const tiles = read?.trip === trip && read.kind === 'tiles' ? read : null;
+  // While `trip` is stale, `measured` already follows the new ends: planning the old trip here would plan it
+  // again on modeled noise alone.
+  const tiles = !stale && read?.trip === trip && read.kind === 'tiles' ? read : null;
   // Undefined while still worth waiting for. Null plans on modeled noise alone.
   const measuredInput: readonly CellAggregate[] | null | undefined =
     measured ?? (regions && !tiles?.graceOver ? undefined : null);
