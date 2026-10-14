@@ -207,7 +207,11 @@ async function runAll<T>(items: T[], jobs: number, run: (item: T) => Promise<voi
 
 function succeeded(child: ChildProcess): Promise<void> {
   return new Promise((resolve, reject) => {
+    const settle = (code: number | null) =>
+      code === 0 ? resolve() : reject(new Error(`${child.spawnfile} exited with ${code}`));
+    // Callers read stdout first, and a child can exit before its output drains: then `exit` has already fired.
+    if (child.exitCode !== null || child.signalCode !== null) return settle(child.exitCode);
     child.on('error', reject);
-    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${child.spawnfile} exited with ${code}`))));
+    child.on('exit', settle);
   });
 }

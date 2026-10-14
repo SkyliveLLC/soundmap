@@ -70,9 +70,11 @@ async function sourceSrs(raster: string): Promise<string> {
 
 function succeeded(child: ChildProcess, codes = [0]): Promise<void> {
   return new Promise((resolve, reject) => {
+    const settle = (code: number | null) =>
+      code !== null && codes.includes(code) ? resolve() : reject(new Error(`${child.spawnfile} exited with ${code}`));
+    // sourceSrs reads stdout first, and a child can exit before its output drains: then `exit` has already fired.
+    if (child.exitCode !== null || child.signalCode !== null) return settle(child.exitCode);
     child.on('error', reject);
-    child.on('exit', (code) =>
-      code !== null && codes.includes(code) ? resolve() : reject(new Error(`${child.spawnfile} exited with ${code}`)),
-    );
+    child.on('exit', settle);
   });
 }
