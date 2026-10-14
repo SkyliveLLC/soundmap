@@ -14,7 +14,7 @@
  *      so nodes on different levels can be moved apart.
  *   2. Every segment of a walkable way is cut where it crosses into the next block (splitAtBlocks).
  *   3. sort -u drops the pieces two overlapping extracts both hold, then join with blocks.tsv bakes in each
- *      block's modeled level. A block missing from blocks.tsv has no DOT pixels: below the floor.
+ *      block's modeled level.
  *   4. Pieces grouped by z14 tile become walk tiles (encodeWalkTile) in an MBTiles file, which `pmtiles
  *      convert` turns into the archive named by walkTilesName, with the tile bytes unchanged.
  * The guards below fail the build before the archive is written.
@@ -22,19 +22,20 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createReadStream, createWriteStream, existsSync, type WriteStream } from 'node:fs';
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { availableParallelism } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
+import type { MultiPolygon, Polygon } from 'geojson';
+import { cellToLatLng } from 'h3-js';
 
 import { cellAt } from '../src/lib/cells.ts';
-import { STREET_NOISE_RELEASE } from '../src/lib/street-noise.ts';
+import { STREET_NOISE_RELEASE, type StreetLevel } from '../src/lib/street-noise.ts';
 import {
   EDGE_FLAGS,
   WALK_ZOOM,
-  bakedLevel,
   decodeWalkTile,
   encodeWalkTile,
   splitAtBlocks,
@@ -43,7 +44,7 @@ import {
   type LngLatE7,
   type WalkBlock,
 } from '../src/lib/walk-tiles.ts';
-import { coverageGeometry } from './coverage.ts';
+import { containsPoint, coverageGeometry } from './coverage.ts';
 
 /** OSM highway values a person may walk on. Motorways and their links are excluded. */
 const WALKABLE_HIGHWAYS: ReadonlySet<string> = new Set([
@@ -83,9 +84,12 @@ const failures: string[] = [];
 const sortCommand = gnuTool('sort');
 const joinCommand = gnuTool('join');
 
-const coverage = await coverageFile();
+const waters = await coverageFile('waters');
+const shorelineFile = await readFile(await coverageFile('shoreline'), 'utf8');
+const { geometry }: { geometry: Polygon | MultiPolygon } = JSON.parse(shorelineFile);
+const shoreline = containsPoint(geometry);
 const extracts: string[] = [];
-for (const [i, osm] of values.osm.entries()) extracts.push(await coveredWalkable(osm, coverage, i));
+for (const [i, osm] of values.osm.entries()) extracts.push(await coveredWalkable(osm, waters, i));
 for (const extract of extracts) await listPoints(extract);
 await sortFile(file('points.unsorted'), file('points.tsv'), ['-u']);
 const moved = await separateLevels(file('points.tsv'));
@@ -106,11 +110,10 @@ await succeeded(spawn('pmtiles', ['convert', file('walk.mbtiles'), archive], { s
 await rm(file('walk.mbtiles'));
 log(`wrote ${archive}`);
 
-/** The 50 states and DC out to their waters, as a GeoJSON feature for osmium, fetched once per --out. */
-async function coverageFile(): Promise<string> {
-  const path = file('states-waters.geojson');
+async function coverageFile(boundary: Parameters<typeof coverageGeometry>[0]): Promise<string> {
+  const path = file(`states-${boundary}.geojson`);
   if (!existsSync(path)) {
-    const feature = { type: 'Feature', geometry: await coverageGeometry('waters'), properties: {} };
+    const feature = { type: 'Feature', geometry: await coverageGeometry(boundary), properties: {} };
     await writeFile(`${path}.tmp`, JSON.stringify(feature));
     await rename(`${path}.tmp`, path);
   }
@@ -298,6 +301,7 @@ async function writeTiles(piecesFile: string, mbtiles: string): Promise<number> 
   let spanning = 0;
   let meters = 0;
   let modeledMeters = 0;
+  let notCoveredMeters = 0;
 
   for await (const { key, rows } of runs(piecesFile, 1)) {
     const nodeIndex = new Map<string, number>();
@@ -315,7 +319,7 @@ async function writeTiles(piecesFile: string, mbtiles: string): Promise<number> 
       let block = blockIndex.get(cell);
       if (block === undefined) {
         blockIndex.set(cell, (block = blockList.length));
-        blockList.push({ cell, street: bakedLevel(laeq === undefined ? null : Number(laeq)) });
+        blockList.push({ cell, street: streetLevel(cell, laeq) });
       }
       edgeBlock.push(block);
       edgeFlags.push(Number(flags));
@@ -345,6 +349,7 @@ async function writeTiles(piecesFile: string, mbtiles: string): Promise<number> 
       const length = metersBetween(from, to);
       meters += length;
       if (street.kind === 'modeled') modeledMeters += length;
+      if (street.kind === 'not-covered') notCoveredMeters += length;
       parent[root(a)] = root(b);
       bounds[0] = Math.min(bounds[0], from[0], to[0]);
       bounds[1] = Math.min(bounds[1], from[1], to[1]);
@@ -395,7 +400,10 @@ async function writeTiles(piecesFile: string, mbtiles: string): Promise<number> 
       `bytes per tile median ${at(0.5)}, p95 ${at(0.95)}, max ${sorted.at(-1)}`,
   );
   const modeledShare = modeledMeters / meters;
-  log(`${(meters / 1000).toFixed(0)} km of edges, ${(100 * modeledShare).toFixed(1)} % of it in modeled blocks`);
+  log(
+    `${(meters / 1000).toFixed(0)} km of edges, ${(100 * modeledShare).toFixed(1)} % of it in modeled blocks, ` +
+      `${((100 * notCoveredMeters) / meters).toFixed(2)} % past the shoreline`,
+  );
   if (spanning > 0) failures.push(`${spanning} edges lie outside their block`);
   if (modeledShare < MIN_MODELED_SHARE) {
     failures.push(`only ${(100 * modeledShare).toFixed(1)} % of the graph is in modeled blocks: is --blocks for this area?`);
@@ -447,6 +455,12 @@ async function checkComponents(nodesFile: string, components: number): Promise<v
   if (crossing / nodes < MIN_CROSSING_TILES) {
     failures.push(`only ${percent(crossing)} of nodes are in networks that cross a tile edge`);
   }
+}
+
+function streetLevel(cell: string, laeq: string | undefined): StreetLevel {
+  if (laeq !== undefined) return { kind: 'modeled', laeq24h: Number(laeq) };
+  const [lat, lng] = cellToLatLng(cell);
+  return shoreline(lng, lat) ? { kind: 'below-floor' } : { kind: 'not-covered' };
 }
 
 /** Runs of consecutive rows of a sorted tab-separated file that agree on one field. */

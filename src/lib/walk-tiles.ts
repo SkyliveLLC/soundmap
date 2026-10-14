@@ -2,7 +2,7 @@ import { h3IndexToSplitLong, splitLongToH3Index } from 'h3-js';
 import { PMTiles } from 'pmtiles';
 
 import { cellAt, type Bounds } from './cells.ts';
-import { STREET_NOISE_RELEASE, type CoveredStreetLevel, type StreetLevel } from './street-noise.ts';
+import { STREET_NOISE_RELEASE, type StreetLevel } from './street-noise.ts';
 import { tilePosition } from './street-noise-tiles.ts';
 
 /** OSM snapshot the walking graph was cut from. */
@@ -264,11 +264,6 @@ export function splitAtBlocks(from: LngLatE7, to: LngLatE7): readonly [BlockPiec
 export function walkTileKey([lngE7, latE7]: LngLatE7): string {
   const { x, y } = tilePosition(latE7 / 1e7, lngE7 / 1e7, WALK_ZOOM);
   return `${x}/${y}`;
-}
-
-/** Pipeline's reading of one blocks.tsv join result: a level, or no DOT pixels in the block. */
-export function bakedLevel(laeq: number | null): CoveredStreetLevel {
-  return laeq === null ? { kind: 'below-floor' } : { kind: 'modeled', laeq24h: laeq };
 }
 
 function cellOfE7([lngE7, latE7]: LngLatE7): string {
