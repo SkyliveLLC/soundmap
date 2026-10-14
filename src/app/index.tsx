@@ -163,7 +163,10 @@ export default function MapScreen() {
     const { granted } = await requestForegroundPermissionsAsync();
     if (!granted) return;
     setLocationGranted(true);
-    const position = await getCurrentPositionAsync({ accuracy: Accuracy.Balanced }).catch(() => null);
+    // Without a fresh fix (indoors, or location services just turned on) the last known one is still where you are.
+    const position = await getCurrentPositionAsync({ accuracy: Accuracy.Balanced })
+      .catch(() => getLastKnownPositionAsync())
+      .catch(() => null);
     if (!position) return;
     const here: LngLat = [position.coords.longitude, position.coords.latitude];
     router.setParams({ from: formatLngLat(here) });
