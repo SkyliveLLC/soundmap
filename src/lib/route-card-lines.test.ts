@@ -147,3 +147,14 @@ test('when the shortest way is already quiet, the card says so with its level', 
     note: 'US DOT 2022 modeled noise',
   });
 });
+
+test('a walk with no modeled noise along it says so instead of calling it quiet', () => {
+  const pier: Route = { ...shortest, pieces: [piece('a', { kind: 'not-covered' })], laeq: null, loudMeters: 0 };
+  assert.deepEqual(routeCardLines(planned({ shortest: pier }), 'quieter'), {
+    headline: 'No noise data along this walk',
+    badge: null,
+    detail: '1.8 km, 22 min',
+    loud: null,
+    note: 'US DOT 2022 modeled noise',
+  });
+});

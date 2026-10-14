@@ -47,7 +47,7 @@ export function RouteLayers({
           id="route-line"
           type="line"
           layout={{ 'line-join': 'round', 'line-cap': 'round' }}
-          paint={{ 'line-color': ['get', 'color'], 'line-width': 5 }}
+          paint={{ 'line-color': ['coalesce', ['get', 'color'], colors.muted], 'line-width': 5 }}
         />
       </GeoJSONSource>
       <GeoJSONSource id="route-pins" data={to ? pinsToGeoJSON({ from, to }) : NOTHING}>

@@ -3,7 +3,7 @@ import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
 import { energyOf, levelOf } from './acoustics.ts';
 import { regionsIn, type Bounds, type CellAggregate, type LngLat } from './cells.ts';
 import { loudnessBand } from './loudness.ts';
-import { DOT_FLOOR_DB, type CoveredStreetLevel } from './street-noise.ts';
+import { DOT_FLOOR_DB, type StreetLevel } from './street-noise.ts';
 import { EDGE_FLAGS, type WalkBlock, type WalkTile } from './walk-tiles.ts';
 
 /** Longest trip offered, straight line. The graph for it is ~24 z14 tiles and the plan ~0.7 s in Hermes (q6). */
@@ -38,7 +38,7 @@ const PRESETS = Object.keys(QUIET_PRESETS) as QuietPreset[];
  * What a route knows about one block's loudness. Measured wins over modeled, block by block; the two are never
  * averaged together for a block (README promise). Different blocks of one route may use different sources.
  */
-export type BlockLevel = { kind: 'measured'; laeq: number; count: number } | CoveredStreetLevel;
+export type BlockLevel = { kind: 'measured'; laeq: number; count: number } | StreetLevel;
 
 /** A run of the route inside one block, in walking order. The card's line is colored piece by piece. */
 export type RoutePiece = { line: readonly [LngLat, LngLat, ...LngLat[]]; meters: number; cell: string; level: BlockLevel };
@@ -49,8 +49,9 @@ export type Route = {
   /**
    * Length-weighted energy average of the pieces' levels, below-floor counted as DOT_FLOOR_DB: what a meter
    * carried along the route would integrate. Mixes measured and modeled blocks, so the card never calls it a reading.
+   * Not-covered pieces are left out; null when every piece is one.
    */
-  laeq: number;
+  laeq: number | null;
   /** Meters at or above LOUD_DB. */
   loudMeters: number;
   /** Meters whose level is measured rather than modeled. */
@@ -61,7 +62,7 @@ export type Route = {
 export type QuietChoice = {
   preset: QuietPreset;
   route: Route;
-  /** Math.round(shortest.laeq − route.laeq). Always ≥ OFFER_DB. */
+  /** Math.round(shortest.laeq − route.laeq). Always ≥ OFFER_DB, so neither laeq is null. */
   quieterDb: number;
   /** quieterDb ≥ NOTICEABLE_DB, judged on the rounded number so the badge never contradicts the headline. */
   noticeable: boolean;
@@ -130,7 +131,7 @@ export function planWalk({
   if (tiles.length === 0) return { kind: 'no-walking-data' };
   const graph = joinTiles(tiles, corridor(from, to));
   const levels = blockLevels(graph.blocks, measured);
-  const blockDb = Float64Array.from(levels, levelDb);
+  const blockDb = Float64Array.from(levels, costDb);
   const start = snap(graph, from);
   if (!start) return { kind: 'off-path', end: 'from' };
   const end = snap(graph, to);
@@ -145,6 +146,7 @@ export function planWalk({
 
   const choices: QuietChoice[] = [];
   let previous: Walk | null = null;
+  const shortestDb = shortest.route.laeq;
   for (const preset of PRESETS) {
     const { lambdas, maxDetour } = QUIET_PRESETS[preset];
     const cap = shortest.route.meters * (1 + maxDetour);
@@ -156,10 +158,20 @@ export function planWalk({
         break;
       }
     }
-    if (!found || shortest.route.laeq - found.route.laeq < OFFER_DB) continue;
+    if (!found || shortestDb === null || found.route.laeq === null) continue;
+    const quieter = shortestDb - found.route.laeq;
+    if (quieter < OFFER_DB) continue;
     if (previous && sameEdges(previous, found.walk)) continue;
     previous = found.walk;
-    choices.push(compare(preset, shortest.route, found.route));
+    const quieterDb = Math.round(quieter);
+    choices.push({
+      preset,
+      route: found.route,
+      quieterDb,
+      noticeable: quieterDb >= NOTICEABLE_DB,
+      extraMeters: found.route.meters - shortest.route.meters,
+      loudMetersAvoided: Math.max(0, shortest.route.loudMeters - found.route.loudMeters),
+    });
   }
   return {
     kind: 'planned',
@@ -167,16 +179,22 @@ export function planWalk({
   };
 }
 
-/** The route line for MapLibre: one feature per piece, colored on the same scale as every hexagon. */
-export function routeToGeoJSON(route: Route): FeatureCollection<LineString, { color: string }> {
+/**
+ * The route line for MapLibre: one feature per piece, colored on the same scale as every hexagon. A piece outside
+ * the modeled area has a null color.
+ */
+export function routeToGeoJSON(route: Route): FeatureCollection<LineString, { color: string | null }> {
   return {
     type: 'FeatureCollection',
-    features: route.pieces.map(({ line, level }) => ({
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: line.map(([longitude, latitude]) => [longitude, latitude]) },
+    features: route.pieces.map(({ line, level }) => {
       // Below the floor means quieter than any modeled level, so it takes the quietest color.
-      properties: { color: loudnessBand(level.kind === 'below-floor' ? -Infinity : levelDb(level)).color },
-    })),
+      const db = level.kind === 'below-floor' ? -Infinity : levelDb(level);
+      return {
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: line.map(([longitude, latitude]) => [longitude, latitude]) },
+        properties: { color: db === null ? null : loudnessBand(db).color },
+      };
+    }),
   };
 }
 
@@ -396,8 +414,11 @@ function blockLevels(blocks: readonly WalkBlock[], measured: readonly CellAggreg
   });
 }
 
-/** The dB that costs and metrics use. Below the floor counts as the floor: for metrics an upper bound, which shrinks gains. */
-function levelDb(level: BlockLevel): number {
+/**
+ * The dB metrics use. Below the floor counts as the floor, an upper bound that shrinks gains. Null where DOT doesn't
+ * model the block.
+ */
+function levelDb(level: BlockLevel): number | null {
   switch (level.kind) {
     case 'measured':
       return level.laeq;
@@ -405,7 +426,13 @@ function levelDb(level: BlockLevel): number {
       return level.laeq24h;
     case 'below-floor':
       return DOT_FLOOR_DB;
+    case 'not-covered':
+      return null;
   }
+}
+
+function costDb(level: BlockLevel): number {
+  return levelDb(level) ?? DOT_FLOOR_DB;
 }
 
 function costFor(graph: Graph, blockDb: Float64Array, lambda: number): Float64Array {
@@ -580,29 +607,21 @@ function toRoute(graph: Graph, [first, ...rest]: Walk, levels: readonly BlockLev
   }
 
   let meters = 0;
+  let leveledMeters = 0;
   let energy = 0;
   let loudMeters = 0;
   let measuredMeters = 0;
   for (const piece of pieces) {
     const db = levelDb(piece.level);
     meters += piece.meters;
+    if (piece.level.kind === 'measured') measuredMeters += piece.meters;
+    if (db === null) continue;
+    leveledMeters += piece.meters;
     energy += piece.meters * energyOf(db);
     if (db >= LOUD_DB) loudMeters += piece.meters;
-    if (piece.level.kind === 'measured') measuredMeters += piece.meters;
   }
-  return { pieces, meters, laeq: levelOf(energy / meters), loudMeters, measuredMeters };
-}
-
-function compare(preset: QuietPreset, shortest: Route, route: Route): QuietChoice {
-  const quieterDb = Math.round(shortest.laeq - route.laeq);
-  return {
-    preset,
-    route,
-    quieterDb,
-    noticeable: quieterDb >= NOTICEABLE_DB,
-    extraMeters: route.meters - shortest.meters,
-    loudMetersAvoided: Math.max(0, shortest.loudMeters - route.loudMeters),
-  };
+  const laeq = leveledMeters > 0 ? levelOf(energy / leveledMeters) : null;
+  return { pieces, meters, laeq, loudMeters, measuredMeters };
 }
 
 function pointAt(graph: Graph, edge: number, along: number): LngLat {

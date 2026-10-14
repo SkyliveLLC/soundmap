@@ -36,3 +36,38 @@ export async function coverageGeometry(boundary: keyof typeof STATE_BOUNDARIES):
   );
   return geometry;
 }
+
+const LAT_ROW_DEG = 0.01;
+
+/**
+ * A point-in-geometry test for millions of points: even-odd over every ring, as the app tests a tap against the
+ * coverage layer.
+ */
+export function containsPoint(geometry: Polygon | MultiPolygon): (lng: number, lat: number) => boolean {
+  const polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
+  const filed = new Map<number, number[]>();
+  for (const ring of polygons.flat()) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [ax, ay] = ring[i];
+      const [bx, by] = ring[j];
+      if (ay === by) continue;
+      const last = Math.floor(Math.max(ay, by) / LAT_ROW_DEG);
+      for (let row = Math.floor(Math.min(ay, by) / LAT_ROW_DEG); row <= last; row++) {
+        const edges = filed.get(row);
+        if (edges) edges.push(ax, ay, bx, by);
+        else filed.set(row, [ax, ay, bx, by]);
+      }
+    }
+  }
+  const rows = new Map([...filed].map(([row, edges]) => [row, Float64Array.from(edges)]));
+  return (lng, lat) => {
+    const edges = rows.get(Math.floor(lat / LAT_ROW_DEG));
+    if (!edges) return false;
+    let inside = false;
+    for (let k = 0; k < edges.length; k += 4) {
+      const [ax, ay, bx, by] = [edges[k], edges[k + 1], edges[k + 2], edges[k + 3]];
+      if (ay > lat !== by > lat && lng < ((bx - ax) * (lat - ay)) / (by - ay) + ax) inside = !inside;
+    }
+    return inside;
+  };
+}
