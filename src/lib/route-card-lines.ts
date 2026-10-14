@@ -58,7 +58,7 @@ export function routeCardLines(state: WalkState, preset: QuietPreset): RouteCard
         headline: `${choice.quieterDb} dB quieter`,
         badge: choice.noticeable ? 'Noticeably quieter' : null,
         detail: `${extra(choice.extraMeters)} · ${trip(choice.route)}`,
-        loud: loudMinutes >= 1 ? `${loudMinutes} min less beside loud roads` : null,
+        loud: loudMinutes >= 1 ? `${loudMinutes} min less on loud blocks` : null,
         note: sourceNote(choice.route, measured),
       };
     }

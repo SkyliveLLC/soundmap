@@ -105,7 +105,7 @@ test('a noticeably quieter route shows its gain, detour, loud minutes and measur
     headline: '3 dB quieter',
     badge: 'Noticeably quieter',
     detail: '+140 m, about 2 min longer · 1.9 km, 24 min',
-    loud: '4 min less beside loud roads',
+    loud: '4 min less on loud blocks',
     note: 'US DOT 2022 modeled noise · measured on 3 blocks',
   });
 });
