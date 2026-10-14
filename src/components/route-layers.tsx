@@ -8,7 +8,8 @@ import type { Palette } from '@/theme';
 const NOTHING: FeatureCollection = { type: 'FeatureCollection', features: [] };
 
 /**
- * The walk on the map: the shortest way grey and dashed, the chosen route thick and colored block by block on the
+ * The walk on the map: the shortest way thin and grey (MapLibre Native on Android draws nothing for a
+ * line-dasharray here, so it isn't dashed), the chosen route thick and colored block by block on the
  * hexagons' scale, and the pins. The sources stay mounted, empty when there's nothing to draw, so the layers keep
  * the order they were declared in instead of landing on top of whatever mounted before them.
  */
@@ -32,7 +33,7 @@ export function RouteLayers({
         <Layer
           id="route-shortest-line"
           type="line"
-          paint={{ 'line-color': colors.muted, 'line-width': 3, 'line-dasharray': [1, 1.5] }}
+          paint={{ 'line-color': colors.muted, 'line-width': 3 }}
         />
       </GeoJSONSource>
       <GeoJSONSource id="route" data={route ? routeToGeoJSON(route) : NOTHING}>
