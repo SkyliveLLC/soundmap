@@ -90,7 +90,7 @@ The map reads street noise from `street-noise-<release>.pmtiles`, a single file 
 
 1. In a browser, download the road noise zips for CONUS, Alaska and Hawaii from the [NTNM page](https://www.bts.gov/geospatial/national-transportation-noise-map) and unzip them. The server blocks curl.
 2. Install the tools: `brew install gdal tippecanoe`. GDAL reads the File Geodatabase rasters; tippecanoe writes the tiles.
-3. Run the pipeline with one `--raster` per raster layer (`gdalinfo <gdb>` lists them):
+3. Run the pipeline with one `--raster` per raster. Its layer is the `RASTER_DATASET` that `gdalinfo <gdb>` prints, such as `HI_road_noise`:
 
    ```bash
    npm run street-noise -- --release 2022 \
