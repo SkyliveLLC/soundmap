@@ -74,10 +74,10 @@ For a preview build on an iPhone, register the phone first with `npx eas-cli@lat
 
 - `convex/` is the backend: the schema, anonymous auth, `measurements.ts`, which adds a reading and serves the per-cell averages for the regions the map is showing, `venues.ts`, which serves venues' hourly averages, and `venueSearch.ts`, which finds venues near a block and saves the result per block.
 - `modules/sound-meter/` is the native module (Swift and Kotlin). It applies A-weighting and emits a level every 125 ms.
-- `src/lib/` holds the pure logic: acoustics, per-model calibration, H3 cells and regions, the rules a measurement must pass, the loudness color scale, street noise and reading it from the tiles, venues, and the offline outbox. `convex/` imports from it too.
+- `src/lib/` holds the pure logic: acoustics, per-model calibration, H3 cells and regions, the rules a measurement must pass, the loudness color scale, street noise and reading it from the tiles, the walking graph tiles, venues, and the offline outbox. `convex/` imports from it too.
 - `src/hooks/` holds the measurement state machine, the "add to map" flow, and the sync that signs in and uploads queued readings.
 - `src/app/` holds the screens (Expo Router): the Map and Measure tabs. `src/components/` holds larger pieces of those screens, such as the venue card.
-- `scripts/` holds the street noise pipeline. Its output is one PMTiles archive, hosted on Cloudflare R2 rather than shipped in the app.
+- `scripts/` holds the street noise and walking graph pipelines. Each writes one PMTiles archive, hosted on Cloudflare R2 rather than shipped in the app.
 - `patches/` holds a `patch-package` fix that lets `h3-js` run on Hermes ([uber/h3-js#203](https://github.com/uber/h3-js/issues/203)).
 
 ## Refresh street noise data
@@ -97,6 +97,23 @@ The map reads street noise from `street-noise-<release>.pmtiles`, a single file 
 4. Upload the archive to the Cloudflare R2 bucket with [rclone](https://rclone.org/s3/#cloudflare-r2), set up once as a remote named `r2` with your R2 API keys (the dashboard can't upload files this large): `rclone copyto .street-noise/street-noise-2022.pmtiles r2:soundmap-tiles/street-noise-2022.pmtiles`. Then bump `STREET_NOISE_RELEASE` in `src/lib/street-noise.ts`; `STREET_NOISE_TILES` follows it. A new release gets a new file name, so phones never mix two releases.
 
 To try tiles before uploading them, serve `.street-noise/` with any server that supports range requests (`npx http-server .street-noise -p 8791`) and point a dev build at it in `.env.local`: `EXPO_PUBLIC_STREET_NOISE_TILES=pmtiles://http://127.0.0.1:8791/street-noise-2022.pmtiles`.
+
+## Refresh the walking graph
+
+Quiet routes are planned on a walking graph cut from OpenStreetMap, `walking-<osm>-noise-<ntnm>.pmtiles`. Each z14 tile holds the walkable ways in it, cut where they cross from one block into the next, with each block's modeled street noise baked in. The phone reads the tiles around a trip with HTTP range requests. The name carries the OSM snapshot and the NTNM release, so rebuild the graph when either changes.
+
+1. Download the OpenStreetMap extracts to cover from [Geofabrik](https://download.geofabrik.de/north-america/us.html), such as `california-latest.osm.pbf`, or `us-latest.osm.pbf` for the whole country.
+2. Install the tools: `brew install osmium-tool pmtiles coreutils`. osmium reads the extracts, pmtiles writes the archive, and coreutils supplies the GNU `sort` and `join` the pipeline needs.
+3. Run the pipeline with the extract's snapshot month as the release and the `blocks.tsv` from the street noise build of the current `STREET_NOISE_RELEASE`:
+
+   ```bash
+   npm run walk-graph -- --release 2026-10 --osm california-latest.osm.pbf --blocks .street-noise/blocks.tsv
+   ```
+
+   It writes `.walk-graph/walking-2026-10-noise-2022.pmtiles`; California takes about 10 minutes. Repeat `--osm` to combine extracts; a way two of them share is kept once. Where distinct OSM nodes on different levels share a point (a bridge over a street), all but one move a centimeter apart, so the graph doesn't join them. The build stops without writing the archive if an edge lies outside its block, fewer than 95 % of the nodes connect into one network, or less than 5 % of the graph lies in modeled blocks, which means `--blocks` is for somewhere else.
+4. Upload the archive with rclone, as for street noise: `rclone copyto .walk-graph/walking-<osm>-noise-<ntnm>.pmtiles r2:soundmap-tiles/walking-<osm>-noise-<ntnm>.pmtiles`. Then bump `WALK_GRAPH_RELEASE` in `src/lib/walk-tiles.ts`; `WALK_TILES` follows it and `STREET_NOISE_RELEASE`. A new snapshot gets a new file name, so phones never join tiles from two.
+
+To try a graph before uploading it, serve `.walk-graph/` with a server that supports range requests (`npx http-server .walk-graph -p 8792`) and set `EXPO_PUBLIC_WALK_TILES=http://127.0.0.1:8792/walking-2026-10-noise-2022.pmtiles` in `.env.local`.
 
 ## Calibrate a phone model
 
