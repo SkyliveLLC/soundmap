@@ -48,11 +48,9 @@ npx expo lint
 
 Release builds run in the cloud on [EAS](https://docs.expo.dev/build/introduction/). `eas.json` has two profiles. `production` makes App Store builds for TestFlight, and EAS raises the build number on each one. `preview` makes builds that testers install directly: an APK on Android and an ad hoc build on iOS.
 
-The owner of the Expo, Convex and Apple Developer accounts does this once:
+The EAS project is `@stivenkn/soundmap`, and its id is in `app.json`. Sign in to that Expo account with `npx eas-cli@latest login`. The owner of the Convex and Apple Developer accounts does this once:
 
 ```bash
-npx eas-cli@latest login
-npx eas-cli@latest init   # creates the EAS project and writes its id into app.json
 npx convex deploy         # pushes convex/ to the production deployment
 ```
 
