@@ -188,13 +188,14 @@ export default function MapScreen() {
         attributionPosition={{ top: insets.top + 8, left: 8 }}
         // Any tap selects the block under it, so a quiet street can answer too. A block with nothing to
         // show clears the card instead: unmeasured and outside the DOT area, or too far out to see,
-        // where the colors are areas rather than blocks.
+        // where the colors are areas rather than blocks. Tapping the selected block again clears it, which
+        // is how a walk's card comes back.
         onPress={async (event) => {
           const [longitude, latitude] = event.nativeEvent.lngLat;
           const cell = cellAt(latitude, longitude);
           const level = (view?.zoom ?? 0) >= BLOCK_ZOOM ? await readStreet(cell).catch(() => undefined) : undefined;
           if (level) setStreet({ cell, level });
-          tappedSelection.current = readingAt(cell, level) ? cell : undefined;
+          tappedSelection.current = cell !== selectedCell && readingAt(cell, level) ? cell : undefined;
           router.setParams({ cell: tappedSelection.current, venue: undefined });
         }}
         // While the card asks for a start, a long-press sets it. Otherwise it sets a (new) end.
