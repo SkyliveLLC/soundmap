@@ -22,6 +22,9 @@ export const MAX_REGIONS = 64;
 /** [west, south, east, north] in degrees. */
 export type Bounds = readonly [west: number, south: number, east: number, north: number];
 
+/** A point as MapLibre orders it. Same order as `Bounds`. */
+export type LngLat = readonly [longitude: number, latitude: number];
+
 /** A measured hexagon: the energy average of its readings' LAeqs, and how many there are. */
 export type CellAggregate = { cell: string; laeq: number; count: number };
 
