@@ -30,7 +30,8 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
-      - uses: anthropics/claude-code-action@v1
+      # Pinned to v1.0.247: v1.0.248 fails every run in under a second at $0 (anthropics/claude-code-action#1901).
+      - uses: anthropics/claude-code-action@2dca132ff0e0c4094ce6048b422c6915a071210b # v1.0.247
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Agents that ask for opus, sonnet or haiku all resolve to Haiku 5.5, so every run stays on Haiku.
