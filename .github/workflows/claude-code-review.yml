@@ -29,7 +29,7 @@ jobs:
       - name: Install Claude Code without the action entrypoint
         run: |
           curl -fsSL https://claude.ai/install.sh | bash -s 2.1.299
-          printf '#!/bin/sh\nunset CLAUDE_CODE_ENTRYPOINT\nexec "%s" "$@"\n' "$HOME/.local/bin/claude" > "$RUNNER_TEMP/claude"
+          printf '#!/bin/sh\nexport -p > "$RUNNER_TEMP/claude-env.sh"\nprintf "%%s\\n" "$@" | grep "^--" > "$RUNNER_TEMP/claude-flags"\nunset CLAUDE_CODE_ENTRYPOINT\nexec "%s" "$@"\n' "$HOME/.local/bin/claude" > "$RUNNER_TEMP/claude"
           chmod +x "$RUNNER_TEMP/claude"
       - uses: anthropics/claude-code-action@v1
         with:
@@ -48,16 +48,18 @@ jobs:
       - if: failure()
         run: |
           jq -c '(if type == "array" then .[] else . end) | select(.type == "result") | {subtype, is_error, api_error_status, errors, result: ((.result // "") | tostring | .[0:400])}' "$RUNNER_TEMP/claude-execution-output.json"
-      # TEMPORARY: probes the same key outside the action.
+      # TEMPORARY: replays the action's exact env with claude -p, removing one suspect at a time.
       - if: failure()
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          for max in 1 4096 32000 64000; do
-            curl -s https://api.anthropic.com/v1/messages \
-              -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
-              -d "{\"model\":\"claude-haiku-5-5\",\"max_tokens\":$max,\"messages\":[{\"role\":\"user\",\"content\":\"Reply with OK\"}]}" \
-              | jq -c --arg max "$max" '{max_tokens: $max, type, error, usage}'
-          done
-          cd "$RUNNER_TEMP" && env -u CLAUDE_CODE_ENTRYPOINT "$HOME/.local/bin/claude" -p "Reply with OK" --model claude-haiku-5-5 --output-format json \
-            | jq -c '{source: "claude -p", is_error, api_error_status, result: ((.result // "") | .[0:200]), total_cost_usd}' || true
+          echo "flags: $(tr '\n' ' ' < "$RUNNER_TEMP/claude-flags")"
+          echo "empty vars: $(sh -c '. "$RUNNER_TEMP/claude-env.sh"; env' | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=$/\1/p' | tr '\n' ' ')"
+          probe() {
+            label=$1; shift
+            sh -c '. "$RUNNER_TEMP/claude-env.sh"; for v in "$@"; do unset "$v"; done; cd "$GITHUB_WORKSPACE"; exec "$HOME/.local/bin/claude" -p "Reply with OK" --model claude-haiku-5-5 --output-format json' probe "$@" \
+              | jq -c --arg label "$label" '{probe: $label, is_error, result: ((.result // "") | .[0:100])}' || echo "{\"probe\": \"$label\", \"crashed\": true}"
+          }
+          probe "action env"
+          probe "minus entrypoint" CLAUDE_CODE_ENTRYPOINT
+          empties=$(sh -c '. "$RUNNER_TEMP/claude-env.sh"; env' | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=$/\1/p')
+          probe "minus all empty vars" $empties
+          for v in $empties; do case $v in ANTHROPIC_*|CLAUDE_*) probe "minus $v" "$v";; esac; done
