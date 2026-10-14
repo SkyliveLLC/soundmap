@@ -12,7 +12,7 @@ export const MAX_TRIP_METERS = 5_000;
 export const MIN_TRIP_METERS = 100;
 /** Walking pace for "x min". */
 export const WALK_METERS_PER_MINUTE = 80;
-/** At or above this, a stretch counts as "beside loud roads". The scale's "Moderate" ends here too. */
+/** At or above this, a stretch counts as "on loud blocks". The scale's "Moderate" ends here too. */
 export const LOUD_DB = 65;
 /** A quieter route is offered from this many dB quieter (energy average), and called noticeable from NOTICEABLE_DB. */
 export const OFFER_DB = 1;
