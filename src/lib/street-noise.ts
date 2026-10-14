@@ -49,6 +49,16 @@ export type CellReading =
 
 export type Pixel = { latitude: number; longitude: number; db: number };
 
+/** Side of the lng/lat windows scripts/street-noise.ts reads the rasters in. */
+export const WINDOW_DEG = 1;
+/** Wider than a block's radius at any US latitude, so edge blocks see all of their pixels. */
+export const MARGIN_DEG = 0.01;
+
+/** Where one raster has pixels, as lng/lat boxes that never cross the antimeridian. */
+export type Footprint = { raster: string; boxes: Bounds[] };
+/** One grid cell of the map and every raster with pixels in it or within MARGIN_DEG of it. */
+export type Window = { bounds: Bounds; rasters: string[] };
+
 /** Pairs a cell's measurements with its street noise. Null only for an unmeasured cell outside the modeled area. */
 export function readCell(cell: string, measured: CellAggregate | undefined, street: StreetLevel): CellReading | null {
   if (measured) return { cell, measured, street };
@@ -63,6 +73,57 @@ export function parsePixelLine(line: string): Pixel | null {
   const [longitude, latitude, db] = fields.map(Number);
   if (!Number.isFinite(longitude) || !Number.isFinite(latitude) || !Number.isFinite(db) || db > 1e30) return null;
   return { latitude, longitude, db };
+}
+
+/**
+ * Boxes around a ring of lng/lat points, split at the antimeridian: Alaska's edge comes back as
+ * [172, 180] and [-180, -117], not one box across the Pacific. Each step between neighbouring points
+ * goes the short way around, so the ring must be dense enough that no step spans 180°.
+ */
+export function boxesAround(ring: readonly (readonly [lng: number, lat: number])[]): Bounds[] {
+  const lats = ring.map(([, lat]) => lat);
+  const south = Math.min(...lats);
+  const north = Math.max(...lats);
+  // Each point is its longitude plus `turns` whole turns, so the ring stays continuous past ±180°.
+  let previous = ring[0][0];
+  let turns = 0;
+  let west = { lng: previous, turns };
+  let east = { lng: previous, turns };
+  for (const [lng] of ring) {
+    turns += Math.round((previous - lng) / 360);
+    previous = lng;
+    if (lng + 360 * turns < west.lng + 360 * west.turns) west = { lng, turns };
+    if (lng + 360 * turns > east.lng + 360 * east.turns) east = { lng, turns };
+  }
+  if (west.turns === east.turns) return [[west.lng, south, east.lng, north]];
+  return [
+    [west.lng, south, 180, north],
+    [-180, south, east.lng, north],
+  ];
+}
+
+/**
+ * The WINDOW_DEG grid cells that intersect any footprint, each with the rasters whose pixels can reach
+ * it: those within MARGIN_DEG, since a block centered in the window may have pixels just outside it.
+ * West to east, then south to north.
+ */
+export function windowsOver(footprints: readonly Footprint[]): Window[] {
+  const windows = new Map<string, Window>();
+  for (const { raster, boxes } of footprints) {
+    for (const [west, south, east, north] of boxes) {
+      const first = Math.floor(Math.max(-180, west - MARGIN_DEG));
+      const last = Math.min(180, east + MARGIN_DEG);
+      for (let lng = first; lng < last; lng += WINDOW_DEG) {
+        for (let lat = Math.floor(south - MARGIN_DEG); lat < north + MARGIN_DEG; lat += WINDOW_DEG) {
+          const key = `${lng},${lat}`;
+          const window = windows.get(key);
+          if (window) window.rasters.push(raster);
+          else windows.set(key, { bounds: [lng, lat, lng + WINDOW_DEG, lat + WINDOW_DEG], rasters: [raster] });
+        }
+      }
+    }
+  }
+  return [...windows.values()].sort((a, b) => a.bounds[0] - b.bounds[0] || a.bounds[1] - b.bounds[1]);
 }
 
 /**

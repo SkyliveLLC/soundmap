@@ -11,9 +11,11 @@ import {
   NOISE_LAYER,
   aggregatePixels,
   areaLevels,
+  boxesAround,
   noiseFeature,
   parsePixelLine,
   readCell,
+  windowsOver,
 } from './street-noise.ts';
 
 const SF: Bounds = [-122.53, 37.7, -122.35, 37.84];
@@ -71,6 +73,55 @@ test('a block feature draws from the block zoom in, rounded to 0.1 dB', () => {
   assert.deepEqual(feature.tippecanoe, { layer: NOISE_LAYER, minzoom: BLOCK_ZOOM, maxzoom: BLOCK_ZOOM });
   assert.deepEqual(feature.properties, { laeq: 61.3 });
   assert.equal(feature.geometry.coordinates[0].length, 7);
+});
+
+// Alaska's raster edge in lng/lat, corners plus the Aleutian stretch past 180°.
+const ALASKA = [
+  [176.2, 69],
+  [-117.4, 67.6],
+  [-132.2, 51.6],
+  [-171.3, 52.4],
+  [-179.9, 52.6],
+  [172.9, 53],
+] as const;
+
+test('a footprint across the antimeridian is two boxes, a footprint short of it is one', () => {
+  assert.deepEqual(boxesAround(ALASKA), [
+    [172.9, 51.6, 180, 69],
+    [-180, 51.6, -117.4, 69],
+  ]);
+  const hawaii = [
+    [-178.3, 28.4],
+    [-177.5, 18.1],
+    [-154.8, 18.9],
+    [-154.7, 29.2],
+  ] as const;
+  assert.deepEqual(boxesAround(hawaii), [[-178.3, 18.1, -154.7, 29.2]]);
+});
+
+test('a window lists every raster within its margin, and no window is listed twice', () => {
+  const windows = windowsOver([
+    { raster: 'CT', boxes: [[-73.82, 40.69, -71.6, 42.32]] },
+    { raster: 'RI', boxes: [[-72.005, 41.08, -70.96, 42.09]] },
+  ]);
+  assert.equal(windows.length, 11);
+  const at = (lng: number, lat: number) =>
+    windows.find(({ bounds }) => bounds[0] === lng && bounds[1] === lat)?.rasters;
+  assert.deepEqual(at(-74, 40), ['CT']);
+  assert.deepEqual(at(-72, 41), ['CT', 'RI']);
+  // RI starts 0.005° inside the -72 column: within the margin, so it joins the -73 column too.
+  assert.deepEqual(at(-73, 41), ['CT', 'RI']);
+  assert.deepEqual(at(-71, 42), ['RI']);
+  assert.deepEqual(windows[0].bounds, [-74, 40, -73, 41]);
+});
+
+test('windows over a footprint across the antimeridian stay inside ±180° and reach both sides', () => {
+  const windows = windowsOver([{ raster: 'AK', boxes: boxesAround(ALASKA) }]);
+  assert.equal(windows.length, (180 - 172 + 63) * 19);
+  assert.ok(windows.every(({ bounds: [west, , east] }) => west >= -180 && east <= 180));
+  const bounds = windows.map(({ bounds }) => bounds.join(','));
+  assert.ok(bounds.includes('-177,51,-176,52'), 'Adak');
+  assert.ok(bounds.includes('172,52,173,53'), 'Attu');
 });
 
 test('pixel lines parse as lng lat db and NoData is dropped', () => {
