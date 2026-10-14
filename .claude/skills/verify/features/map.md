@@ -8,6 +8,7 @@ The Map tab shows the US colored with modeled transportation noise (roads, rail 
 - `map-initial-camera` opens at zoom 13 on the phone when location is already granted and the phone has a last fix, otherwise at zoom 3 on the lower 48.
 - `map-zoomed-out` shows larger area hexagons further out, and a tap there clears the card instead of answering for a block. Below zoom 10, measured cells stop loading (the last result stays drawn) and venue dots hide.
 - `map-empty` shows `Colors show modeled transportation noise. Measure a spot to add yours.` when a loaded view (zoom 10 or closer) has no measurement and nothing is selected. On the lower-48 launch view nothing has loaded, so no hint shows.
+- `map-shared-down` shows `Can't load shared measurements right now. Colors show modeled transportation noise.` when the measured-cells or venues query fails (a backend behind the app, rolled back, or erroring): hexagons loaded before the failure stay drawn, venue dots go, a walk plans `· modeled only`, and the app stays open. The layer comes back on its own once the deployment's functions change.
 - `map-cells` draws one stronger hexagon per measured cell, in its band color.
 - `map-select-modeled` handles a tap on an unmeasured block with DOT data: `<N> dBA modeled transportation noise`, `<band>`, `24 h avg · US DOT 2022 · Modeled, not measured`.
 - `map-select-below-floor` handles a tap on a blank block on US land: `Below 45 dBA modeled transportation noise`, `Very quiet`, `US DOT 2022 · Modeled, not measured`.
