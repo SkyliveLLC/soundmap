@@ -20,7 +20,7 @@ Paths below are relative to the repo root. `sm` means `.claude/skills/verify/scr
    ```
    It serves `http://127.0.0.1:3210`. Another checkout's local backend may already own 3210: check with `lsof -nP -iTCP:3210 -sTCP:LISTEN` first, and read the URL `convex dev` wrote to `.env.local`. The shared cloud dev deployment (`npx convex dev`, logged in) also works, but `dev:resetMap` then wipes everyone's dev data.
 
-   The street-noise layer reads `STREET_NOISE_TILES`, which is `'R2_URL_PENDING'` until the archive is hosted (`src/lib/street-noise.ts`). Without a local archive, the layer is blank and nothing on screen says so. Serve one and point the bundle at it:
+   The street-noise layer reads `STREET_NOISE_TILES` (`src/lib/street-noise.ts`), the nationwide archive on Cloudflare R2, so it works with network and no setup. To test a freshly built archive instead, serve it and point the bundle at it:
    ```bash
    npx -y http-server .street-noise -p 8791 -a 127.0.0.1 --cors > .verify/tiles.log 2>&1 &
    echo 'EXPO_PUBLIC_STREET_NOISE_TILES=pmtiles://http://127.0.0.1:8791/street-noise-2022.pmtiles' >> .env.local
