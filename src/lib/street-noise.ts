@@ -42,13 +42,16 @@ export const NOISE_ZOOMS = [
 /** Modeled transportation noise for one H3 cell. Three states because "no number" means two different things. */
 export type StreetLevel = { kind: 'modeled'; laeq24h: number } | { kind: 'below-floor' } | { kind: 'not-covered' };
 
+/** Street noise for a block inside the modeled area. */
+export type CoveredStreetLevel = Exclude<StreetLevel, { kind: 'not-covered' }>;
+
 /**
  * Everything the card shows for one cell. Measured and modeled values sit side by side, never combined.
  * An unmeasured cell outside the modeled area has nothing to say, so it is not representable.
  */
 export type CellReading =
   | { cell: string; measured: CellAggregate; street: StreetLevel }
-  | { cell: string; measured: null; street: Exclude<StreetLevel, { kind: 'not-covered' }> };
+  | { cell: string; measured: null; street: CoveredStreetLevel };
 
 export type Pixel = { latitude: number; longitude: number; db: number };
 
