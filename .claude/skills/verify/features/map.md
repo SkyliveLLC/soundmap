@@ -21,7 +21,7 @@ The Map tab shows the US colored with modeled transportation noise (roads, rail 
 - `map-route-presets` shows a `Quieter` / `Quietest` switch only when both presets found different routes. Switching redraws at once and logs no new `planWalk` line.
 - `map-route-from-location` makes `From my location` ask for location the first time and read one fix. Denied, the card keeps asking for a long-press.
 - `map-route-edit` covers `Swap` (pins trade places, the route replans), `Change start` (the start pin goes and the card asks again) and `Close` (route, pins and card go).
-- `map-route-failures` shows one line each: `Quiet routes are for walks up to 5 km.` with `These points are <km> km apart.`, `Pick an end farther from the start.`, `No walking map here yet.`, `Pick a start closer to a street or path.` (or `an end`), `No walking route joins these points.`, and `Can't load the walking map. Check your connection.`
+- `map-route-failures` shows one line each: `Quiet routes are for walks up to 5 km.` with `These points are <km> km apart.`, `Pick an end farther from the start.`, `No walking map here yet.`, `Pick a start closer to a street or path.` (or `an end`), `No walking route joins these points.`, and `Can't load the walking map. Check your connection.` with a `Try again` button that reads the same trip again
 - `map-route-cell-tap` makes a block tap mid-route show that block's card with the route still drawn. Tapping the same block again clears its card and brings the route card back.
 - `map-live` shows a measurement added on another phone without any interaction on this one, while this phone's view is at zoom 10 or closer.
 
@@ -53,7 +53,7 @@ Preconditions:
   - Long-press: `adb shell input swipe <x> <y> <x> <y> 800` is a long-press. With no walk it drops the end pin, and a second one sets the start.
   - From my location: `adb emu geo fix -122.4194 37.7793` (longitude first), then tap `From my location` and answer the system dialog: allow while using the app, or deny to see the card keep asking.
   - Too far: `from=-122.418,37.7785&to=-122.33,37.80`. Nevada: `from=-119.81,39.53&to=-119.80,39.525` gives `No walking map here yet.` while the archive covers only California. Off path: `from=-122.3937,37.7955&to=-122.386,37.805` puts the end in the Bay.
-  - Offline: `adb shell cmd connectivity airplane-mode enable`, then plan a trip in an area this session hasn't loaded. Re-enable with `disable`.
+  - Offline: `adb shell cmd connectivity airplane-mode enable`, then plan a trip in an area this session hasn't loaded. The walking tiles read from Cloudflare R2, but a local `EXPO_PUBLIC_WALK_TILES` over `adb reverse` keeps working in airplane mode, so test this against R2. Re-enable with `disable`, then `Try again` plans the trip.
   - Block tap: with a route showing, tap a colored block beside it, then tap the Bay.
 - **Proof.** Before and after screenshots of each tap, `snapshot -i` text, and `npx convex data` output.
 

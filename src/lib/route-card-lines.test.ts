@@ -80,7 +80,7 @@ test('before a start, the card asks for one', () => {
 test('each state that is not a plan gets one line', () => {
   assert.deepEqual(routeCardLines({ kind: 'loading' }, 'quieter'), oneLine('Finding a quieter way…'));
   assert.deepEqual(
-    routeCardLines({ kind: 'offline' }, 'quieter'),
+    routeCardLines({ kind: 'offline', retry: () => {} }, 'quieter'),
     oneLine("Can't load the walking map. Check your connection."),
   );
   assert.deepEqual(

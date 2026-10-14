@@ -69,6 +69,11 @@ export function RouteCard({
           })}
         </View>
       )}
+      {from && state.kind === 'offline' && (
+        <Pressable onPress={state.retry} style={[styles.button, { backgroundColor: colors.accent }]}>
+          <Text style={[styles.buttonLabel, { color: colors.onAccent }]}>Try again</Text>
+        </Pressable>
+      )}
       {!from && (
         <Pressable onPress={onStartHere} style={[styles.button, { backgroundColor: colors.accent }]}>
           <Text style={[styles.buttonLabel, { color: colors.onAccent }]}>From my location</Text>
