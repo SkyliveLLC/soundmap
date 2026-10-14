@@ -16,7 +16,7 @@
  *   3. sort -u drops the pieces two overlapping extracts both hold, then join with blocks.tsv bakes in each
  *      block's modeled level. A block missing from blocks.tsv has no DOT pixels: below the floor.
  *   4. Pieces grouped by z14 tile become walk tiles (encodeWalkTile) in an MBTiles file, which `pmtiles
- *      convert` turns into walking-<release>-noise-<NTNM release>.pmtiles with the tile bytes unchanged.
+ *      convert` turns into the archive named by walkTilesName, with the tile bytes unchanged.
  * The guards below fail the build before the archive is written.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
@@ -39,6 +39,7 @@ import {
   encodeWalkTile,
   splitAtBlocks,
   walkTileKey,
+  walkTilesName,
   type LngLatE7,
   type WalkBlock,
 } from '../src/lib/walk-tiles.ts';
@@ -100,7 +101,7 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`guard failed: ${failure}`);
   process.exit(1);
 }
-const archive = file(`walking-${release}-noise-${STREET_NOISE_RELEASE}.pmtiles`);
+const archive = file(walkTilesName(release));
 await succeeded(spawn('pmtiles', ['convert', file('walk.mbtiles'), archive], { stdio: 'inherit' }));
 await rm(file('walk.mbtiles'));
 log(`wrote ${archive}`);

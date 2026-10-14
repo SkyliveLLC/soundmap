@@ -19,6 +19,7 @@ const tile: WalkTile = {
   blocks: [
     { cell: WEST, street: { kind: 'modeled', laeq24h: 62.3 } },
     { cell: MIDDLE, street: { kind: 'below-floor' } },
+    { cell: EAST, street: { kind: 'not-covered' } },
   ],
 };
 
@@ -28,8 +29,8 @@ function plain({ nodes, edgeNodes, edgeBlock, edgeFlags, blocks }: WalkTile) {
 
 test('a tile survives encoding and decoding', () => {
   const bytes = encodeWalkTile(tile);
-  assert.equal(bytes.byteLength, 84);
-  assert.equal(String.fromCharCode(...bytes.subarray(0, 4)), 'SMW1');
+  assert.equal(bytes.byteLength, 94);
+  assert.equal(String.fromCharCode(...bytes.subarray(0, 4)), 'SMW2');
   assert.deepEqual(plain(decodeWalkTile(bytes)), {
     nodes: [-1224180000, 377800000, -1224178882, 377800056, -1224163218, 377800839],
     edgeNodes: [0, 1, 1, 2],
@@ -38,12 +39,13 @@ test('a tile survives encoding and decoding', () => {
     blocks: [
       { cell: WEST, street: { kind: 'modeled', laeq24h: 62.3 } },
       { cell: MIDDLE, street: { kind: 'below-floor' } },
+      { cell: EAST, street: { kind: 'not-covered' } },
     ],
   });
 });
 
 test('a tile decodes from bytes that start at an odd offset', () => {
-  const shifted = new Uint8Array(85);
+  const shifted = new Uint8Array(95);
   shifted.set(encodeWalkTile(tile), 1);
   assert.deepEqual(plain(decodeWalkTile(shifted.subarray(1))).nodes, [...tile.nodes]);
 });
@@ -55,10 +57,11 @@ test('a corrupt tile is rejected', () => {
     return bytes;
   };
   assert.throws(() => decodeWalkTile(corrupt(0, 0)), /bad magic/);
+  assert.throws(() => decodeWalkTile(corrupt(3, '1'.charCodeAt(0))), /bad magic/, 'a tile of the previous format');
   // The second edge's `to` (byte 52) and its block (byte 58).
   assert.throws(() => decodeWalkTile(corrupt(52, 3)), /edge node 3 of 3/);
-  assert.throws(() => decodeWalkTile(corrupt(58, 2)), /edge block 2 of 2/);
-  assert.throws(() => decodeWalkTile(encodeWalkTile(tile).subarray(0, 83)), /83 bytes where the header needs 84/);
+  assert.throws(() => decodeWalkTile(corrupt(58, 3)), /edge block 3 of 3/);
+  assert.throws(() => decodeWalkTile(encodeWalkTile(tile).subarray(0, 93)), /93 bytes where the header needs 94/);
 });
 
 test('a segment is cut where it crosses into each block, at points its pieces share', () => {

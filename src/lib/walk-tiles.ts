@@ -2,20 +2,29 @@ import { h3IndexToSplitLong, splitLongToH3Index } from 'h3-js';
 import { PMTiles } from 'pmtiles';
 
 import { cellAt, type Bounds } from './cells.ts';
-import { STREET_NOISE_RELEASE, type CoveredStreetLevel } from './street-noise.ts';
+import { STREET_NOISE_RELEASE, type CoveredStreetLevel, type StreetLevel } from './street-noise.ts';
 import { tilePosition } from './street-noise-tiles.ts';
 
-/** OSM snapshot the walking graph was cut from. A new snapshot gets a new file name, so phones never join tiles of two. */
+/** OSM snapshot the walking graph was cut from. */
 export const WALK_GRAPH_RELEASE = '2026-10';
 
+const FORMAT = 2;
+
 /**
- * The walking graph (built by scripts/walk-graph.ts) with modeled street noise baked into it. The name carries
- * the NTNM release too: bumping STREET_NOISE_RELEASE points phones at a graph rebuilt from the same blocks the
- * map draws, so a route's modeled levels always match the colors under it. EXPO_PUBLIC_WALK_TILES overrides it.
+ * The archive's file name, for the build and the phone. Each OSM snapshot, tile format and NTNM release gets its
+ * own, so phones never join tiles of two and a route's modeled levels come from the same blocks the map draws.
+ */
+export function walkTilesName(osmRelease: string): string {
+  return `walking-v${FORMAT}-${osmRelease}-noise-${STREET_NOISE_RELEASE}.pmtiles`;
+}
+
+/**
+ * The walking graph (built by scripts/walk-graph.ts) with modeled street noise baked into it.
+ * EXPO_PUBLIC_WALK_TILES overrides it.
  */
 export const WALK_TILES =
   process.env.EXPO_PUBLIC_WALK_TILES ??
-  `https://pub-569943dcdebc4f959ef9af5d05e0d5c2.r2.dev/walking-${WALK_GRAPH_RELEASE}-noise-${STREET_NOISE_RELEASE}.pmtiles`;
+  `https://pub-569943dcdebc4f959ef9af5d05e0d5c2.r2.dev/${walkTilesName(WALK_GRAPH_RELEASE)}`;
 
 /** Graph tiles exist at this zoom only: about 2 km across in the lower 48. */
 export const WALK_ZOOM = 14;
@@ -23,8 +32,8 @@ export const WALK_ZOOM = 14;
 /** Edge flag bits. Only what the cost function reads. */
 export const EDGE_FLAGS = { steps: 1 } as const;
 
-/** A block the graph crosses, with the modeled level baked in at build time. */
-export type WalkBlock = { cell: string; street: CoveredStreetLevel };
+/** A block the graph crosses, with the modeled level baked in at build time as the map reads it. */
+export type WalkBlock = { cell: string; street: StreetLevel };
 
 /**
  * One z14 tile of the walking graph: every walkable OSM segment whose first node lies in the tile, cut where it
@@ -47,17 +56,19 @@ export type WalkTile = {
   blocks: readonly WalkBlock[];
 };
 
-// 'SMW1' read as a little-endian u32.
-const MAGIC = 0x31574d53;
+const MAGIC = new DataView(Uint8Array.from(`SMW${FORMAT}`, (char) => char.charCodeAt(0)).buffer).getUint32(0, true);
 const HEADER_BYTES = 16;
 const BLOCK_BYTES = 10;
+const BELOW_FLOOR = 0;
+const NOT_COVERED = 0xffff;
 
 /**
  * Byte offsets of each section. Wire layout, little-endian, stored uncompressed (gunzip in JS was 0.95 s of a
  * 1.7 s plan in q6):
- *   u32 magic 'SMW1' · u32 nodeCount · u32 edgeCount · u32 blockCount
+ *   u32 magic 'SMW2' · u32 nodeCount · u32 edgeCount · u32 blockCount
  *   i32[2·nodeCount] nodes · u32[2·edgeCount] edgeNodes · u16[edgeCount] edgeBlock · u8[edgeCount] edgeFlags (padded to 4)
- *   blockCount × (u32 cellHigh · u32 cellLow · u16 level)   level: 0 = below floor, else laeq24h × 10
+ *   blockCount × (u32 cellHigh · u32 cellLow · u16 level)
+ *     level: 0 = below floor, 0xffff = not covered, else laeq24h × 10
  */
 function layout(nodeCount: number, edgeCount: number, blockCount: number) {
   const nodes = HEADER_BYTES;
@@ -84,8 +95,10 @@ export function encodeWalkTile({ nodes, edgeNodes, edgeBlock, edgeFlags, blocks 
   new Uint16Array(bytes.buffer, at.edgeBlock, edgeBlock.length).set(edgeBlock);
   bytes.set(edgeFlags, at.edgeFlags);
   blocks.forEach(({ cell, street }, i) => {
-    const level = street.kind === 'modeled' ? Math.round(street.laeq24h * 10) : 0;
-    if (street.kind === 'modeled' && (level < 1 || level > 0xffff)) throw new Error(`walk tile: ${cell} level ${street.laeq24h}`);
+    const level = encodedLevel(street);
+    if (street.kind === 'modeled' && (level <= BELOW_FLOOR || level >= NOT_COVERED)) {
+      throw new Error(`walk tile: ${cell} level ${street.laeq24h}`);
+    }
     const [low, high] = h3IndexToSplitLong(cell);
     const offset = at.blocks + i * BLOCK_BYTES;
     view.setUint32(offset, high, true);
@@ -118,10 +131,9 @@ export function decodeWalkTile(bytes: Uint8Array): WalkTile {
   }
   const blocks = Array.from({ length: blockCount }, (_, i): WalkBlock => {
     const offset = at.blocks + i * BLOCK_BYTES;
-    const level = view.getUint16(offset + 8, true);
     return {
       cell: splitLongToH3Index(view.getUint32(offset + 4, true), view.getUint32(offset, true)),
-      street: level === 0 ? { kind: 'below-floor' } : { kind: 'modeled', laeq24h: level / 10 },
+      street: decodedLevel(view.getUint16(offset + 8, true)),
     };
   });
   return {
@@ -131,6 +143,28 @@ export function decodeWalkTile(bytes: Uint8Array): WalkTile {
     edgeFlags: new Uint8Array(buffer, byteOffset + at.edgeFlags, edgeCount),
     blocks,
   };
+}
+
+function encodedLevel(street: StreetLevel): number {
+  switch (street.kind) {
+    case 'modeled':
+      return Math.round(street.laeq24h * 10);
+    case 'below-floor':
+      return BELOW_FLOOR;
+    case 'not-covered':
+      return NOT_COVERED;
+  }
+}
+
+function decodedLevel(level: number): StreetLevel {
+  switch (level) {
+    case BELOW_FLOOR:
+      return { kind: 'below-floor' };
+    case NOT_COVERED:
+      return { kind: 'not-covered' };
+    default:
+      return { kind: 'modeled', laeq24h: level / 10 };
+  }
 }
 
 /** Tiles kept decoded: a 5 km trip needs up to 30. */

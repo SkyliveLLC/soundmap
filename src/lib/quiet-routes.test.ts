@@ -15,7 +15,7 @@ import {
   type Route,
   type WalkPlan,
 } from './quiet-routes.ts';
-import type { CoveredStreetLevel } from './street-noise.ts';
+import type { StreetLevel } from './street-noise.ts';
 import { EDGE_FLAGS, type WalkBlock, type WalkTile } from './walk-tiles.ts';
 
 const ORIGIN: LngLat = [-122.42, 37.77];
@@ -30,11 +30,12 @@ function at(x: number, y: number): LngLat {
   ];
 }
 
-const modeled = (laeq24h: number): CoveredStreetLevel => ({ kind: 'modeled', laeq24h });
-const BELOW_FLOOR: CoveredStreetLevel = { kind: 'below-floor' };
+const modeled = (laeq24h: number): StreetLevel => ({ kind: 'modeled', laeq24h });
+const BELOW_FLOOR: StreetLevel = { kind: 'below-floor' };
+const NOT_COVERED: StreetLevel = { kind: 'not-covered' };
 
 /** A polyline of [x, y] meters inside one block. */
-type Street = { cell: string; street: CoveredStreetLevel; points: readonly (readonly [number, number])[]; steps?: true };
+type Street = { cell: string; street: StreetLevel; points: readonly (readonly [number, number])[]; steps?: true };
 
 /**
  * A tile holding these streets, built the way decodeWalkTile hands them over: E7 nodes shared by equal coordinates,
@@ -77,7 +78,7 @@ function tile(...streets: Street[]): WalkTile {
 }
 
 /** A 1 km main street with a side street 100 m north, joined by a link at each end. Links match the side street. */
-function ladder(main: CoveredStreetLevel, side: CoveredStreetLevel): WalkTile {
+function ladder(main: StreetLevel, side: StreetLevel): WalkTile {
   return tile(
     { cell: 'main', street: main, points: [[0, 0], [1000, 0]] },
     { cell: 'west', street: side, points: [[0, 0], [0, 100]] },
@@ -95,7 +96,7 @@ function planned(trip: Parameters<typeof planWalk>[0]): WalkPlan {
 function summary(route: Route) {
   return {
     meters: Math.round(route.meters),
-    laeq: Math.round(route.laeq * 10) / 10,
+    laeq: route.laeq === null ? null : Math.round(route.laeq * 10) / 10,
     cells: route.pieces.map((piece) => piece.cell),
   };
 }
@@ -139,7 +140,7 @@ test('quietest keeps the quietest route within +25 % of the shortest', () => {
     street: BELOW_FLOOR,
     points: [[x, y0], [x, y1]],
   });
-  const street = (cell: string, laeq: CoveredStreetLevel, y: number): Street => ({
+  const street = (cell: string, laeq: StreetLevel, y: number): Street => ({
     cell,
     street: laeq,
     points: [[0, y], [1000, y]],
@@ -226,11 +227,40 @@ test('a block below the modeling floor counts as 45 dB along the route', () => {
     to: at(1000, 0),
   });
   // Energy average of 45 and 55 over equal lengths; a silent floor would give 51.99.
-  assert.equal(plan.shortest.laeq.toFixed(2), '52.40');
+  assert.equal(plan.shortest.laeq?.toFixed(2), '52.40');
   assert.deepEqual(
     routeToGeoJSON(plan.shortest).features.map((feature) => feature.properties.color),
     ['#1A9850', '#E3A21A'],
   );
+});
+
+test('a block outside the modeled area is left out of the route stats and drawn without a color', () => {
+  const trip = {
+    tiles: [
+      tile(
+        { cell: 'pier', street: NOT_COVERED, points: [[0, 0], [500, 0]] },
+        { cell: 'b', street: modeled(55), points: [[500, 0], [1000, 0]] },
+      ),
+    ],
+    from: at(0, 0),
+    to: at(1000, 0),
+  };
+  const plan = planned({ ...trip, measured: null });
+  assert.deepEqual(summary(plan.shortest), { meters: 1000, laeq: 55, cells: ['pier', 'b'] });
+  assert.deepEqual(
+    routeToGeoJSON(plan.shortest).features.map((feature) => feature.properties.color),
+    [null, '#E3A21A'],
+  );
+
+  const measured = planned({ ...trip, measured: [{ cell: 'pier', laeq: 70, count: 1 }] });
+  assert.equal(measured.shortest.laeq?.toFixed(2), '67.12');
+  assert.equal(Math.round(measured.shortest.loudMeters), 500);
+});
+
+test('a walk wholly outside the modeled area has no level and offers no quieter way', () => {
+  const plan = planned({ tiles: [ladder(NOT_COVERED, modeled(50))], measured: null, from: at(0, 0), to: at(1000, 0) });
+  assert.deepEqual(summary(plan.shortest), { meters: 1000, laeq: null, cells: ['main'] });
+  assert.deepEqual(plan.choices, []);
 });
 
 test('tiles join across a seam only where their nodes share exact coordinates', () => {

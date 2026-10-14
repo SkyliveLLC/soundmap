@@ -2,7 +2,7 @@
  * Replays q1's 30 San Francisco trips against a walking graph archive and prints what each quiet preset buys.
  * It is the acceptance check for scripts/walk-graph.ts and src/lib/quiet-routes.ts together.
  *
- *   npm run walk-graph-check -- --tiles .walk-graph/walking-<osm>-noise-<ntnm>.pmtiles   (or an https URL)
+ *   npm run walk-graph-check -- --tiles .walk-graph/walking-v<format>-<osm>-noise-<ntnm>.pmtiles   (or an https URL)
  *
  * Plans use modeled noise only (measured: null), like q1. On its own graph q1's "quieter" gave a median 2.05 dB
  * for +0.75 % distance, 20/30 trips ≥ 1 dB, 11/30 ≥ 3 dB and none over +25 %; each row shows q1's numbers beside
@@ -85,9 +85,10 @@ function gainsOf(plan: WalkPlan): Record<QuietPreset, Gain> {
   // The route the card shows for each preset: a preset with no route of its own falls back to the other one.
   const gain = (preset: QuietPreset): Gain => {
     const choice = plan.choices.find((candidate) => candidate.preset === preset) ?? plan.choices[0];
-    return choice
+    const { laeq } = plan.shortest;
+    return choice && laeq !== null && choice.route.laeq !== null
       ? {
-          db: plan.shortest.laeq - choice.route.laeq,
+          db: laeq - choice.route.laeq,
           detourPct: (100 * choice.extraMeters) / plan.shortest.meters,
         }
       : { db: 0, detourPct: 0 };

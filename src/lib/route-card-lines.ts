@@ -45,6 +45,9 @@ export function routeCardLines(state: WalkState, preset: QuietPreset): RouteCard
       const { shortest, choices, measured } = state.plan;
       const choice = choices.find((candidate) => candidate.preset === preset) ?? choices[0];
       if (!choice) {
+        if (shortest.laeq === null) {
+          return { ...only('No noise data along this walk', trip(shortest)), note: sourceNote(shortest, measured) };
+        }
         return {
           ...only(
             'The shortest way is already the quiet one',
