@@ -8,8 +8,10 @@
  *
  * Stages, all streaming through sorted files in --out (default .walk-graph/), so memory stays bounded at any
  * extract size:
- *   1. osmium keeps ways with a walkable highway tag and writes each with its node locations, one per line. A
- *      first pass over them lists every node's level, so nodes on different levels can be moved apart.
+ *   1. osmium keeps ways with a walkable highway tag and, of their nodes, those inside the 50 states and DC
+ *      that NTNM models, out to state waters so piers stay whole (states-waters.geojson, fetched once). It
+ *      writes each way with its node locations, one per line. A first pass over them lists every node's level,
+ *      so nodes on different levels can be moved apart.
  *   2. Every segment of a walkable way is cut where it crosses into the next block (splitAtBlocks).
  *   3. sort -u drops the pieces two overlapping extracts both hold, then join with blocks.tsv bakes in each
  *      block's modeled level. A block missing from blocks.tsv has no DOT pixels: below the floor.
@@ -19,8 +21,8 @@
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { createReadStream, createWriteStream, type WriteStream } from 'node:fs';
-import { mkdir, rename, rm } from 'node:fs/promises';
+import { createReadStream, createWriteStream, existsSync, type WriteStream } from 'node:fs';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { availableParallelism } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -40,6 +42,7 @@ import {
   type LngLatE7,
   type WalkBlock,
 } from '../src/lib/walk-tiles.ts';
+import { coverageGeometry } from './coverage.ts';
 
 /** OSM highway values a person may walk on. Motorways and their links are excluded. */
 const WALKABLE_HIGHWAYS: ReadonlySet<string> = new Set([
@@ -78,10 +81,14 @@ const failures: string[] = [];
 const sortCommand = gnuTool('sort');
 const joinCommand = gnuTool('join');
 
-for (const osm of values.osm) await listPoints(osm);
+const coverage = await coverageFile();
+const extracts: string[] = [];
+for (const [i, osm] of values.osm.entries()) extracts.push(await coveredWalkable(osm, coverage, i));
+for (const extract of extracts) await listPoints(extract);
 await sortFile(file('points.unsorted'), file('points.tsv'), ['-u']);
 const moved = await separateLevels(file('points.tsv'));
-for (const osm of values.osm) await cutWays(osm, moved);
+for (const extract of extracts) await cutWays(extract, moved);
+await Promise.all(extracts.map((extract) => rm(extract)));
 await sortFile(file('pieces.unsorted'), file('pieces.tsv'), ['-u']);
 await joinLevels(file('pieces.tsv'), file('pieces-by-tile.tsv'));
 const components = await writeTiles(file('pieces-by-tile.tsv'), file('walk.mbtiles'));
@@ -97,19 +104,42 @@ await succeeded(spawn('pmtiles', ['convert', file('walk.mbtiles'), archive], { s
 await rm(file('walk.mbtiles'));
 log(`wrote ${archive}`);
 
-/** Stage 1: an extract's walkable ways, each with its node locations. */
-async function* walkableWays(osm: string): AsyncGenerator<Way> {
-  const filter = spawn(
-    'osmium',
-    ['tags-filter', osm, `w/highway=${[...WALKABLE_HIGHWAYS].join(',')}`, '-f', 'pbf,pbf_compression=none', '-o', '-'],
-    { stdio: ['ignore', 'pipe', 'inherit'] },
-  );
+/** The 50 states and DC out to their waters, as a GeoJSON feature for osmium, fetched once per --out. */
+async function coverageFile(): Promise<string> {
+  const path = file('states-waters.geojson');
+  if (!existsSync(path)) {
+    const feature = { type: 'Feature', geometry: await coverageGeometry('waters'), properties: {} };
+    await writeFile(`${path}.tmp`, JSON.stringify(feature));
+    await rename(`${path}.tmp`, path);
+  }
+  return path;
+}
+
+/**
+ * Stage 1: an extract's ways with a walkable highway tag, with their nodes, then only their nodes inside the
+ * states. A way that crosses the border keeps its nodes on this side; the segment over it has no location on
+ * the far end and is dropped. Each osmium step reads its input twice, so the first writes a file.
+ */
+async function coveredWalkable(osm: string, coverage: string, index: number): Promise<string> {
+  const highways = file(`highways-${index}.osm.pbf`);
+  const output = file(`walkable-${index}.osm.pbf`);
+  const filter = ['tags-filter', osm, `w/highway=${[...WALKABLE_HIGHWAYS].join(',')}`, '-O', '-o', highways];
+  await succeeded(spawn('osmium', filter, { stdio: 'inherit' }));
+  const extract = ['extract', '--strategy', 'simple', '--polygon', coverage, highways, '-O', '-o', output];
+  await succeeded(spawn('osmium', extract, { stdio: 'inherit' }));
+  await rm(highways);
+  log(`cut ${osm} to the states`);
+  return output;
+}
+
+/** An extract's walkable ways, each with its node locations. */
+async function* walkableWays(extract: string): AsyncGenerator<Way> {
   const locate = spawn(
     'osmium',
-    ['add-locations-to-ways', '--ignore-missing-nodes', '-F', 'pbf', '-', '-f', 'opl,add_metadata=false', '-o', '-'],
-    { stdio: [filter.stdout, 'pipe', 'inherit'] },
+    ['add-locations-to-ways', '--ignore-missing-nodes', extract, '-f', 'opl,add_metadata=false', '-o', '-'],
+    { stdio: ['ignore', 'pipe', 'inherit'] },
   );
-  const exited = Promise.all([succeeded(filter), succeeded(locate)]);
+  const exited = succeeded(locate);
   for await (const line of createInterface({ input: locate.stdout })) {
     if (!line.startsWith('w')) continue;
     const way = parseWay(line);
@@ -119,16 +149,16 @@ async function* walkableWays(osm: string): AsyncGenerator<Way> {
 }
 
 /** Appends every node of an extract's walkable ways, with its way's level, for separateLevels. */
-async function listPoints(osm: string): Promise<void> {
+async function listPoints(extract: string): Promise<void> {
   const points = createWriteStream(file('points.unsorted'), { flags: 'a' });
-  for await (const way of walkableWays(osm)) {
+  for await (const way of walkableWays(extract)) {
     const level = levelOf(way.tags);
     let lines = '';
     for (const { id, at } of way.nodes) if (at) lines += `${at.join(',')}\t${id}\t${level}\n`;
     await write(points, lines);
   }
   await close(points);
-  log(`listed the nodes of ${osm}`);
+  log(`listed the nodes of ${extract}`);
 }
 
 /**
@@ -154,12 +184,12 @@ async function separateLevels(pointsFile: string): Promise<ReadonlyMap<string, L
 }
 
 /** Stage 2 for one extract: appends its pieces. */
-async function cutWays(osm: string, moved: ReadonlyMap<string, LngLatE7>): Promise<void> {
+async function cutWays(extract: string, moved: ReadonlyMap<string, LngLatE7>): Promise<void> {
   const pieces = createWriteStream(file('pieces.unsorted'), { flags: 'a' });
   let ways = 0;
   let segments = 0;
   let cuts = 0;
-  for await (const way of walkableWays(osm)) {
+  for await (const way of walkableWays(extract)) {
     const flags = way.tags.highway === 'steps' ? EDGE_FLAGS.steps : 0;
     const points = way.nodes.map(({ id, at }) => moved.get(id) ?? at);
     let lines = '';
@@ -179,7 +209,7 @@ async function cutWays(osm: string, moved: ReadonlyMap<string, LngLatE7>): Promi
     if (++ways % 500_000 === 0) log(`${ways / 1_000_000}M walkable ways`);
   }
   await close(pieces);
-  log(`${osm}: ${ways} walkable ways, ${segments} segments, ${cuts} cuts at block boundaries`);
+  log(`${extract}: ${ways} walkable ways, ${segments} segments, ${cuts} cuts at block boundaries`);
 }
 
 type Way = { tags: Readonly<Record<string, string>>; nodes: { id: string; at: LngLatE7 | null }[] };

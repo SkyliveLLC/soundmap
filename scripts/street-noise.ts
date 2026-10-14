@@ -38,9 +38,7 @@ import {
   noiseFeature,
   windowsOver,
 } from '../src/lib/street-noise.ts';
-
-// 50 states and DC (FIPS 1-56; territories start at 60): what NTNM models.
-const STATES = 'https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_us_state_500k.zip';
+import { coverageGeometry } from './coverage.ts';
 
 const { values } = parseArgs({
   options: {
@@ -146,19 +144,12 @@ async function buildTiles(blocksFile: string, file: string): Promise<void> {
   console.log(`${count} blocks at resolution ${CELL_RESOLUTION}`);
 }
 
-/** The 50 states and DC dissolved into one feature, in block tiles only: the app reads it on a tap. */
+/** The modeled area as one feature, in block tiles only: the app reads it on a tap. */
 async function coverageFeature(): Promise<string> {
-  const layer = STATES.split('/').at(-1)!.replace('.zip', '');
-  const union = await output('ogr2ogr', [
-    ...['-f', 'GeoJSONSeq', '/vsistdout/', `/vsizip//vsicurl/${STATES}`, '-dialect', 'sqlite'],
-    ...['-sql', `SELECT ST_Union(geometry) AS geometry FROM ${layer} WHERE CAST(STATEFP AS INTEGER) <= 56`],
-    ...['-t_srs', 'EPSG:4326', '-lco', 'COORDINATE_PRECISION=6'],
-  ]);
-  const { geometry } = JSON.parse(union.replace(/^\x1e/, ''));
   return JSON.stringify({
     type: 'Feature',
     tippecanoe: { layer: COVERAGE_LAYER, minzoom: BLOCK_ZOOM, maxzoom: BLOCK_ZOOM },
-    geometry,
+    geometry: await coverageGeometry('shoreline'),
     properties: {},
   });
 }
