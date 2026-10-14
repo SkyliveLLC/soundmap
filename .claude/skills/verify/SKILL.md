@@ -1,11 +1,11 @@
 ---
 name: verify
-description: Drive the Soundmap Expo app on an iOS Simulator the way a user does (Measure tab, Add to map, the venue question, Map tab hexagons, modeled street noise, venue cards) and capture proof (screenshots, accessibility snapshots, Convex and outbox rows). Use to verify any change to the app's screens, hooks, storage, or the sound-meter module before calling it done.
+description: Drive the Soundmap Expo app on an iOS Simulator the way a user does (Measure tab, Add to map, the venue question, Map tab hexagons, modeled transportation noise, venue cards) and capture proof (screenshots, accessibility snapshots, Convex and outbox rows). Use to verify any change to the app's screens, hooks, storage, or the sound-meter module before calling it done.
 ---
 
 # Verify Soundmap
 
-Soundmap is an iOS/Android Expo app. The user surface is two tabs: **Measure** (a 30 s noise measurement, then "Add to map", which may ask which nearby café, library or coworking space you were in) and **Map** (modeled US DOT street noise as faint hexagons, everyone's measurements as stronger H3 hexagons, and measured venues as dots with an hour-by-hour card). Measurements live on the Convex deployment named in `.env.local` (`CONVEX_DEPLOYMENT`). The phone keeps only an SQLite outbox of readings that haven't uploaded yet. Never point a verification run at a production deployment.
+Soundmap is an iOS/Android Expo app. The user surface is two tabs: **Measure** (a 30 s noise measurement, then "Add to map", which may ask which nearby café, library or coworking space you were in) and **Map** (modeled US DOT transportation noise from roads, rail and aviation as faint hexagons, everyone's measurements as stronger H3 hexagons, and measured venues as dots with an hour-by-hour card). Measurements live on the Convex deployment named in `.env.local` (`CONVEX_DEPLOYMENT`). The phone keeps only an SQLite outbox of readings that haven't uploaded yet. Never point a verification run at a production deployment.
 
 This skill drives the **iOS Simulator** through T3 Code's `agent-device` and the helper `scripts/sm`. Android has the same features. It isn't scripted here because the synthetic mic input exists only on the iOS Simulator. On an Android emulator, the meter would need a real host mic.
 

@@ -200,7 +200,7 @@ export default function MapScreen() {
         aggregates?.length === 0 && (
           <View style={[styles.card, { backgroundColor: colors.background }]}>
             <Text style={[styles.hint, { color: colors.muted }]}>
-              Colors show modeled street noise. Measure a spot to add yours.
+              Colors show modeled transportation noise. Measure a spot to add yours.
             </Text>
           </View>
         )
@@ -248,7 +248,7 @@ function CellCard({ reading, colors }: { reading: CellReading; colors: Palette }
 
 type CardLines = { band: LoudnessBand; level: string; unit: string; detail: string; note: string | null };
 
-// A measurement leads when there is one. DOT street noise is a different quantity (a modeled 24 h
+// A measurement leads when there is one. DOT's noise is a different quantity (a modeled 24 h
 // average), so it is always labeled as modeled and never merged into the measured level.
 function cardLines(reading: CellReading): CardLines {
   const source = `US DOT ${STREET_NOISE_RELEASE}`;
@@ -269,7 +269,7 @@ function cardLines(reading: CellReading): CardLines {
       return {
         band,
         level: `${Math.round(reading.street.laeq24h)}`,
-        unit: 'dBA modeled street noise',
+        unit: 'dBA modeled transportation noise',
         detail: band.label,
         note: `24 h avg · ${source} · Modeled, not measured`,
       };
@@ -279,7 +279,7 @@ function cardLines(reading: CellReading): CardLines {
       return {
         band,
         level: `Below ${DOT_FLOOR_DB}`,
-        unit: 'dBA modeled street noise',
+        unit: 'dBA modeled transportation noise',
         detail: band.label,
         note: `${source} · Modeled, not measured`,
       };
@@ -290,9 +290,9 @@ function cardLines(reading: CellReading): CardLines {
 function streetNote(street: StreetLevel, source: string): string | null {
   switch (street.kind) {
     case 'modeled':
-      return `${Math.round(street.laeq24h)} dBA modeled street noise · 24 h avg · ${source}`;
+      return `${Math.round(street.laeq24h)} dBA modeled transportation noise · 24 h avg · ${source}`;
     case 'below-floor':
-      return `Modeled street noise below ${DOT_FLOOR_DB} dBA · ${source}`;
+      return `Modeled transportation noise below ${DOT_FLOOR_DB} dBA · ${source}`;
     case 'not-covered':
       return null;
   }
