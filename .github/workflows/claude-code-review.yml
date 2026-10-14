@@ -48,3 +48,16 @@ jobs:
       - if: failure()
         run: |
           jq -c '(if type == "array" then .[] else . end) | select(.type == "result") | {subtype, is_error, api_error_status, errors, result: ((.result // "") | tostring | .[0:400])}' "$RUNNER_TEMP/claude-execution-output.json"
+      # TEMPORARY: probes the same key outside the action.
+      - if: failure()
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          for max in 1 4096 32000 64000; do
+            curl -s https://api.anthropic.com/v1/messages \
+              -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+              -d "{\"model\":\"claude-haiku-5-5\",\"max_tokens\":$max,\"messages\":[{\"role\":\"user\",\"content\":\"Reply with OK\"}]}" \
+              | jq -c --arg max "$max" '{max_tokens: $max, type, error, usage}'
+          done
+          cd "$RUNNER_TEMP" && env -u CLAUDE_CODE_ENTRYPOINT "$HOME/.local/bin/claude" -p "Reply with OK" --model claude-haiku-5-5 --output-format json \
+            | jq -c '{source: "claude -p", is_error, api_error_status, result: ((.result // "") | .[0:200]), total_cost_usd}' || true
