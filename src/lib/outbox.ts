@@ -7,7 +7,7 @@ import type { Measurement } from './measurement.ts';
 import { parseVisit } from './venues.ts';
 
 // Readings wait here until the server has them, so one taken offline survives an app restart.
-// Rows leave once the server answers, accepted or refused.
+// Rows leave once the server answers, accepted or refused, unless the rate limit held the reading back.
 
 /** Passed to SQLiteProvider's onInit. Safe to run on every launch. */
 export async function createSchema(db: SQLiteDatabase) {

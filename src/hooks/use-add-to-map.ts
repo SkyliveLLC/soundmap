@@ -20,8 +20,8 @@ export type AddToMapState =
   | { status: 'choosing'; cell: string; venues: Venue[] }
   | { status: 'saving' }
   | { status: 'saved'; cell: string; venue: Venue | null }
-  /** Waiting in the outbox for a connection. It reaches the map on its own. */
-  | { status: 'queued' }
+  /** Waiting in the outbox for a connection, or for the rate limit to let it in. It reaches the map on its own. */
+  | { status: 'queued'; until: 'online' | 'rateLimit' }
   | { status: 'denied' }
   | { status: 'failed' };
 
@@ -81,11 +81,11 @@ export function useAddToMap({ summary, calibration }: Pick<Measurement, 'summary
     // Without a user yet, the sync uploads it after sign-in. Offline, Convex sends it on reconnect.
     if (!online()) {
       if (isAuthenticated) upload(measurement).catch(() => {});
-      setState({ status: 'queued' });
+      setState({ status: 'queued', until: 'online' });
       return;
     }
-    await upload(measurement);
-    setState({ status: 'saved', cell, venue });
+    if (await upload(measurement)) setState({ status: 'queued', until: 'rateLimit' });
+    else setState({ status: 'saved', cell, venue });
   }
 
   // A failed or slow search means no question, not a failed share.

@@ -3,10 +3,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { ConvexError } from 'convex/values';
+
 import type { NoiseSummary } from './acoustics.ts';
 import { calibrationFor, type Calibration } from './calibration.ts';
 import { cellAt } from './cells.ts';
-import { rejectionReason } from './measurement.ts';
+import { asRateLimited, rejectionReason } from './measurement.ts';
 
 const NOW = Date.UTC(2026, 9, 6, 18);
 const CELL = cellAt(37.7651, -122.4196);
@@ -50,4 +52,14 @@ test('the reading must name its device model and a plausible offset', () => {
   assert.notEqual(rejectionReason(reading({ calibration: { model: '' } }), NOW), null);
   assert.notEqual(rejectionReason(reading({ calibration: { offsetDb: 0 } }), NOW), null);
   assert.notEqual(rejectionReason(reading({ calibration: { offsetDb: Number.NaN } }), NOW), null);
+});
+
+test('only the rate limit refusal reads as one, so other refusals still leave the outbox', () => {
+  assert.deepEqual(asRateLimited(new ConvexError({ kind: 'rateLimited', retryAfterMs: 90_000 })), {
+    kind: 'rateLimited',
+    retryAfterMs: 90_000,
+  });
+  assert.equal(asRateLimited(new ConvexError('time is in the future')), null);
+  assert.equal(asRateLimited(new ConvexError({ kind: 'rateLimited' })), null);
+  assert.equal(asRateLimited(new Error('connection lost')), null);
 });

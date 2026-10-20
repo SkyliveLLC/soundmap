@@ -1,3 +1,4 @@
+import { ConvexError } from 'convex/values';
 import { getResolution, isValidCell } from 'h3-js';
 
 import type { NoiseSummary } from './acoustics.ts';
@@ -47,4 +48,19 @@ export function rejectionReason({ cell, at, summary, calibration }: Omit<Measure
     return `calibration offset is outside ${MIN_OFFSET_DB}–${MAX_OFFSET_DB} dB`;
   }
   return null;
+}
+
+/**
+ * What `measurements.add` throws, as ConvexError data, when this user added too many readings lately.
+ * The reading itself is fine: the phone keeps it and tries again after `retryAfterMs`.
+ */
+export type RateLimited = { kind: 'rateLimited'; retryAfterMs: number };
+
+/** The rate limit refusal in an error from `measurements.add`, or null for any other error. */
+export function asRateLimited(error: unknown): RateLimited | null {
+  if (!(error instanceof ConvexError)) return null;
+  const data: unknown = error.data;
+  if (typeof data !== 'object' || data === null || !('kind' in data) || !('retryAfterMs' in data)) return null;
+  const { kind, retryAfterMs } = data;
+  return kind === 'rateLimited' && typeof retryAfterMs === 'number' ? { kind, retryAfterMs } : null;
 }

@@ -232,7 +232,11 @@ function AddToMap({ state, add, choose, colors }: ReturnType<typeof useAddToMap>
     case 'queued':
       return (
         <View style={styles.queued}>
-          <Caption colors={colors}>Saved. It will appear on the map when you’re back online.</Caption>
+          <Caption colors={colors}>
+            {state.until === 'online'
+              ? 'Saved. It will appear on the map when you’re back online.'
+              : 'Saved. You’ve added a lot of readings this hour, so it will appear on the map later.'}
+          </Caption>
         </View>
       );
     case 'denied':
