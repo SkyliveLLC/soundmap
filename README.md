@@ -16,6 +16,8 @@ Phone microphones vary, so each reading is converted to dB SPL with an offset fo
 
 ## Privacy
 
+The policy for store listings is [PRIVACY.md](PRIVACY.md). Keep it in step with this list.
+
 - Audio is processed on the device and never recorded or stored.
 - Adding a measurement to the map is always your choice, and it is shared with everyone.
 - Only the noise summary, the H3 cell, the time, and the phone model with its calibration are sent, plus a venue's OpenStreetMap id and the hour when you name one. Raw GPS coordinates never leave the phone.
@@ -48,7 +50,7 @@ npx expo lint
 
 ## Ship a build
 
-Release builds run in the cloud on [EAS](https://docs.expo.dev/build/introduction/). `eas.json` has two profiles. `production` makes App Store builds for TestFlight, and EAS raises the build number on each one. `preview` makes builds that testers install directly: an APK on Android and an ad hoc build on iOS.
+Release builds run in the cloud on [EAS](https://docs.expo.dev/build/introduction/). `eas.json` has two profiles. `production` makes store builds, for TestFlight and Google Play, and EAS raises the build number on each one. `preview` makes builds that testers install directly: an APK on Android and an ad hoc build on iOS.
 
 The EAS project is `@stivenkn/soundmap`, and its id is in `app.json`. Sign in to that Expo account with `npx eas-cli@latest login`. The owner of the Convex and Apple Developer accounts does this once:
 
@@ -71,6 +73,17 @@ npx eas-cli@latest submit --platform ios
 ```
 
 For a preview build on an iPhone, register the phone first with `npx eas-cli@latest device:create`.
+
+### Google Play
+
+The same `production` profile makes an Android App Bundle, and EAS raises its version code on each build. Once, create the app in [Play Console](https://play.google.com/console) with the package `com.soundmap.app`, then give EAS a Google service account key so it can upload for you ([Expo's guide](https://docs.expo.dev/submit/android/)). Then:
+
+```bash
+npx eas-cli@latest build --platform android --profile production
+npx eas-cli@latest submit --platform android
+```
+
+The upload goes to the internal testing track. Promote it to open testing in Play Console. Play asks for a privacy policy URL; use [PRIVACY.md](PRIVACY.md) on GitHub.
 
 ## Layout
 
