@@ -95,6 +95,7 @@ The upload goes to the internal testing track. Promote it to open testing in Pla
 - `src/hooks/` holds the measurement state machine, the "add to map" flow, the sync that signs in and uploads queued readings, and the walk plan that fetches a trip's walking tiles and measured blocks.
 - `src/app/` holds the screens (Expo Router): the Map and Measure tabs. `src/components/` holds larger pieces of those screens, such as the venue card, the route card and the route's map layers.
 - `scripts/` holds the street noise and walking graph pipelines. Each writes one PMTiles archive, hosted on Cloudflare R2 rather than shipped in the app.
+- `assets/brand/mark.svg` is the logo. `scripts/brand-icons.sh` renders the app icon, the Android adaptive icon layers, the splash image and the favicon from it, and needs ImageMagick (`brew install imagemagick`).
 - `patches/` holds a `patch-package` fix that lets `h3-js` run on Hermes ([uber/h3-js#203](https://github.com/uber/h3-js/issues/203)).
 
 ## Refresh street noise data
