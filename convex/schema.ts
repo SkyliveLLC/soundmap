@@ -27,9 +27,9 @@ export default defineSchema({
     .index('by_user_client', ['userId', 'clientId'])
     // Ends in `_creationTime`, so `measurements.add` counts a user's recent readings in one range.
     .index('by_user', ['userId']),
-  // One row per hexagon with the summed sound energy of its readings, kept in step by `measurements.add`.
+  // One row per hexagon with the summed sound energy of its readings, kept in step as readings are added and removed.
   cells: defineTable({ cell: v.string(), energy: v.number(), count: v.number() }).index('by_cell', ['cell']),
-  // A measured OpenStreetMap venue, with 24 hour-of-day energy totals kept in step by `measurements.add`.
+  // A measured OpenStreetMap venue, with 24 hour-of-day energy totals kept in step as readings are added and removed.
   venues: defineTable({
     ...venue.fields,
     hours: v.array(v.object({ energy: v.number(), count: v.number() })),

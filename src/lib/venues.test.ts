@@ -12,6 +12,7 @@ import {
   overallLevel,
   parseVisit,
   quietestHour,
+  removeFromHour,
 } from './venues.ts';
 import { parseOverpass } from './venue-search.ts';
 
@@ -35,6 +36,16 @@ test('the overall level averages across hours, and an unmeasured venue has none'
   assertClose(overallLevel(hours)?.laeq, 67.03);
   assert.equal(overallLevel(hours)?.count, 2);
   assert.equal(overallLevel(emptyHours()), null);
+});
+
+test('taking readings back out of an hour restores its level, down to an unmeasured venue', () => {
+  const hours = addToHour(addToHour(emptyHours(), 9, 60), 9, 80);
+  const withoutLoud = removeFromHour(hours, 9, 80);
+  assertClose(hourLevels(withoutLoud)[9]?.laeq, 60);
+  assert.equal(hourLevels(withoutLoud)[9]?.count, 1);
+  const empty = removeFromHour(withoutLoud, 9, 60);
+  assert.deepEqual(empty, emptyHours());
+  assert.equal(overallLevel(empty), null);
 });
 
 test('the quietest hour is the lowest measured one, the earlier on a tie', () => {

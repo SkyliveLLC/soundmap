@@ -38,6 +38,8 @@ npx expo run:ios       # or: npx expo run:android
 
 On a new deployment, set the Convex Auth signing keys (`JWT_PRIVATE_KEY` and `JWKS`) once, as described in [Convex Auth's manual setup](https://labs.convex.dev/auth/setup/manual). To empty a dev map, set `SOUNDMAP_ALLOW_RESET=true` on that deployment and run `npx convex run dev:resetMap`.
 
+To take one user's readings off the map, such as someone flooding it, copy the `userId` from one of their rows in the dashboard's `measurements` table and run `npx convex run moderation:removeUser '{"userId": "<id>"}'`. Add `--prod` for the production map. Their readings leave the block and venue averages too. A run removes 500 and schedules the next until none are left.
+
 On the iOS Simulator the sound meter uses a synthetic café soundscape instead of the Mac microphone, so you can test the whole flow without a real device.
 
 ```bash
@@ -74,7 +76,7 @@ For a preview build on an iPhone, register the phone first with `npx eas-cli@lat
 
 ## Layout
 
-- `convex/` is the backend: the schema, anonymous auth, `measurements.ts`, which adds a reading and serves the per-cell averages for the regions the map is showing, `venues.ts`, which serves venues' hourly averages, and `venueSearch.ts`, which finds venues near a block and saves the result per block.
+- `convex/` is the backend: the schema, anonymous auth, `measurements.ts`, which adds a reading and serves the per-cell averages for the regions the map is showing, `venues.ts`, which serves venues' hourly averages, `moderation.ts`, which takes one user's readings off the map, and `venueSearch.ts`, which finds venues near a block and saves the result per block.
 - `modules/sound-meter/` is the native module (Swift and Kotlin). It applies A-weighting and emits a level every 125 ms.
 - `src/lib/` holds the pure logic: acoustics, per-model calibration, H3 cells and regions, the rules a measurement must pass, the loudness color scale, street noise and reading it from the tiles, the walking graph tiles, planning quiet walks and the route card's copy, venues, and the offline outbox. `convex/` imports from it too.
 - `src/hooks/` holds the measurement state machine, the "add to map" flow, the sync that signs in and uploads queued readings, and the walk plan that fetches a trip's walking tiles and measured blocks.
