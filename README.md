@@ -20,7 +20,7 @@ Phone microphones vary, so each reading is converted to dB SPL with an offset fo
 - Adding a measurement to the map is always your choice, and it is shared with everyone.
 - Only the noise summary, the H3 cell, the time, and the phone model with its calibration are sent, plus a venue's OpenStreetMap id and the hour when you name one. Raw GPS coordinates never leave the phone.
 - Planning a walk happens on the phone. It downloads the walking map around your trip the way the map downloads its tiles; your start and end never leave the phone.
-- There are no accounts. Each install signs in as an anonymous user, used to recognize retried uploads.
+- There are no accounts. Each install signs in as an anonymous user, used to recognize retried uploads and to limit each install to 120 readings an hour. Readings past the limit wait on the phone and upload later.
 - To list nearby venues, the phone sends our server the block it would share anyway. The server asks OpenStreetMap, so OpenStreetMap never sees the phone.
 - The map only ever shows per-block and per-venue averages and counts. Who measured, and when, stays on the server.
 

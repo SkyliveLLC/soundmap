@@ -50,11 +50,24 @@ export function rejectionReason({ cell, at, summary, calibration }: Omit<Measure
   return null;
 }
 
+// One session at a time back to back, so no person reaches it. A script flooding the map does.
+/** Most readings one user may add in any trailing window, counted by when the server saved them. */
+export const RATE_LIMIT = { count: (60 * 60) / SESSION_SEC, windowMs: 60 * 60_000 };
+
 /**
  * What `measurements.add` throws, as ConvexError data, when this user added too many readings lately.
  * The reading itself is fine: the phone keeps it and tries again after `retryAfterMs`.
  */
 export type RateLimited = { kind: 'rateLimited'; retryAfterMs: number };
+
+/**
+ * The refusal for a user's next reading, or null when they may add it. `savedAt` holds when the server saved
+ * their readings since `now - RATE_LIMIT.windowMs`, oldest first, and needs at most `RATE_LIMIT.count` of them.
+ */
+export function rateLimited(savedAt: readonly number[], now: number): RateLimited | null {
+  if (savedAt.length < RATE_LIMIT.count) return null;
+  return { kind: 'rateLimited', retryAfterMs: savedAt[0] + RATE_LIMIT.windowMs - now };
+}
 
 /** The rate limit refusal in an error from `measurements.add`, or null for any other error. */
 export function asRateLimited(error: unknown): RateLimited | null {

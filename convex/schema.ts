@@ -23,7 +23,10 @@ export default defineSchema({
     /** The venue the person said they were in, and the local hour of day the reading was taken. */
     venueId: v.optional(v.id('venues')),
     hour: v.optional(v.number()),
-  }).index('by_user_client', ['userId', 'clientId']),
+  })
+    .index('by_user_client', ['userId', 'clientId'])
+    // Ends in `_creationTime`, so `measurements.add` counts a user's recent readings in one range.
+    .index('by_user', ['userId']),
   // One row per hexagon with the summed sound energy of its readings, kept in step by `measurements.add`.
   cells: defineTable({ cell: v.string(), energy: v.number(), count: v.number() }).index('by_cell', ['cell']),
   // A measured OpenStreetMap venue, with 24 hour-of-day energy totals kept in step by `measurements.add`.

@@ -5,12 +5,12 @@ import { mutation, query } from './_generated/server';
 import { calibration } from './validators';
 import { energyOf, levelOf } from '../src/lib/acoustics.ts';
 import { MAX_REGIONS, REGION_RESOLUTION, isRegion, regionRange, type CellAggregate } from '../src/lib/cells.ts';
-import { rejectionReason } from '../src/lib/measurement.ts';
+import { RATE_LIMIT, rateLimited, rejectionReason } from '../src/lib/measurement.ts';
 import { recordVisit } from './venues';
 
 /**
  * Adds one reading to the shared map, and to its venue's hour when it has one.
- * Safe to retry: a clientId already seen from this user is a no-op.
+ * Safe to retry: a clientId already seen from this user is a no-op, even past the rate limit.
  */
 export const add = mutation({
   args: {
@@ -29,8 +29,15 @@ export const add = mutation({
       .withIndex('by_user_client', (q) => q.eq('userId', userId).eq('clientId', measurement.clientId))
       .unique();
     if (seen) return;
-    const reason = rejectionReason(measurement, Date.now());
+    const now = Date.now();
+    const reason = rejectionReason(measurement, now);
     if (reason) throw new ConvexError(reason);
+    const recent = await ctx.db
+      .query('measurements')
+      .withIndex('by_user', (q) => q.eq('userId', userId).gt('_creationTime', now - RATE_LIMIT.windowMs))
+      .take(RATE_LIMIT.count);
+    const limited = rateLimited(recent.map((row) => row._creationTime), now);
+    if (limited) throw new ConvexError(limited);
 
     const { clientId, cell, at, summary, calibration, visit } = measurement;
     // A visit that doesn't check out is dropped. The reading still counts for its block.
