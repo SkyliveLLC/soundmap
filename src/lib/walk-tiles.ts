@@ -1,7 +1,7 @@
 import { h3IndexToSplitLong, splitLongToH3Index } from 'h3-js';
 
 import { cellAt, type Bounds } from './cells.ts';
-import { STREET_NOISE_RELEASE, type StreetLevel } from './street-noise.ts';
+import { STREET_NOISE_RELEASE, TILE_HOST, type StreetLevel } from './street-noise.ts';
 import { tilePosition, tileReader } from './street-noise-tiles.ts';
 
 /** OSM snapshot the walking graph was cut from. */
@@ -23,7 +23,7 @@ export function walkTilesName(osmRelease: string): string {
  */
 export const WALK_TILES =
   process.env.EXPO_PUBLIC_WALK_TILES ??
-  `https://pub-569943dcdebc4f959ef9af5d05e0d5c2.r2.dev/${walkTilesName(WALK_GRAPH_RELEASE)}`;
+  `${TILE_HOST}/${walkTilesName(WALK_GRAPH_RELEASE)}`;
 
 /** Graph tiles exist at this zoom only: about 2 km across in the lower 48. */
 export const WALK_ZOOM = 14;
