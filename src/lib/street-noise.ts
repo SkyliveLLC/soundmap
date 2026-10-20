@@ -9,6 +9,9 @@ export const DOT_FLOOR_DB = 45;
 /** The NTNM release the hosted tiles hold. Each release is its own file, so bumping this moves every phone to it. */
 export const STREET_NOISE_RELEASE = '2022';
 
+/** The Cloudflare R2 bucket that hosts the street noise and walking graph archives, on its custom domain. */
+export const TILE_HOST = 'https://soundmap-tiles.skylive.world';
+
 /**
  * US DOT transportation noise (roads, rail and aviation) for the 50 states and DC as one PMTiles archive
  * (built by scripts/street-noise.ts), hosted on Cloudflare R2, which MapLibre reads with HTTP range requests.
@@ -16,7 +19,7 @@ export const STREET_NOISE_RELEASE = '2022';
  */
 export const STREET_NOISE_TILES =
   process.env.EXPO_PUBLIC_STREET_NOISE_TILES ??
-  `pmtiles://https://pub-569943dcdebc4f959ef9af5d05e0d5c2.r2.dev/street-noise-${STREET_NOISE_RELEASE}.pmtiles`;
+  `pmtiles://${TILE_HOST}/street-noise-${STREET_NOISE_RELEASE}.pmtiles`;
 
 /** Tile layer of hexagons, each with an `laeq` (dBA, 24 h). Only hexagons at or above DOT_FLOOR_DB exist. */
 export const NOISE_LAYER = 'noise';
