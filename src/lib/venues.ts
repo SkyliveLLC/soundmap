@@ -40,6 +40,14 @@ export function addToHour(hours: readonly HourTotal[], hour: number, laeq: numbe
   return hours.map((total, h) => (h === hour ? { energy: total.energy + energyOf(laeq), count: total.count + 1 } : total));
 }
 
+/** The 24 totals with one reading at `hour` taken back out. An hour left with none is exactly empty again. */
+export function removeFromHour(hours: readonly HourTotal[], hour: number, laeq: number): HourTotal[] {
+  return hours.map((total, h) => {
+    if (h !== hour) return total;
+    return total.count > 1 ? { energy: total.energy - energyOf(laeq), count: total.count - 1 } : { energy: 0, count: 0 };
+  });
+}
+
 export function hourLevels(hours: readonly HourTotal[]): HourLevel[] {
   return hours.map(({ energy, count }) => (count > 0 ? { laeq: levelOf(energy / count), count } : null));
 }

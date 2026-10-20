@@ -3,10 +3,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { ConvexError } from 'convex/values';
+
 import type { NoiseSummary } from './acoustics.ts';
 import { calibrationFor, type Calibration } from './calibration.ts';
 import { cellAt } from './cells.ts';
-import { rejectionReason } from './measurement.ts';
+import { RATE_LIMIT, asRateLimited, rateLimited, rejectionReason } from './measurement.ts';
 
 const NOW = Date.UTC(2026, 9, 6, 18);
 const CELL = cellAt(37.7651, -122.4196);
@@ -50,4 +52,21 @@ test('the reading must name its device model and a plausible offset', () => {
   assert.notEqual(rejectionReason(reading({ calibration: { model: '' } }), NOW), null);
   assert.notEqual(rejectionReason(reading({ calibration: { offsetDb: 0 } }), NOW), null);
   assert.notEqual(rejectionReason(reading({ calibration: { offsetDb: Number.NaN } }), NOW), null);
+});
+
+const MINUTE = 60_000;
+const saved = (count: number, oldestAgo: number) => Array.from({ length: count }, (_, i) => NOW - oldestAgo + i * 1000);
+
+test('a user adds readings until the last hour holds the limit, then waits for the oldest to age out', () => {
+  assert.equal(rateLimited(saved(RATE_LIMIT.count - 1, 50 * MINUTE), NOW), null);
+  assert.deepEqual(rateLimited(saved(RATE_LIMIT.count, 50 * MINUTE), NOW), { kind: 'rateLimited', retryAfterMs: 10 * MINUTE });
+});
+
+test('only the rate limit refusal reads as one, so other refusals still leave the outbox', () => {
+  const limited = rateLimited(saved(RATE_LIMIT.count, 30 * MINUTE), NOW);
+  assert.ok(limited);
+  assert.deepEqual(asRateLimited(new ConvexError(limited)), limited);
+  assert.equal(asRateLimited(new ConvexError('time is in the future')), null);
+  assert.equal(asRateLimited(new ConvexError({ kind: 'rateLimited' })), null);
+  assert.equal(asRateLimited(new Error('connection lost')), null);
 });
