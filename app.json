@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "soundmap",
+    "name": "Soundmap",
     "slug": "soundmap",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -17,9 +17,8 @@
     "android": {
       "package": "com.soundmap.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#4F7360",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
@@ -33,9 +32,12 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#F3F0E8",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 100,
+          "dark": {
+            "backgroundColor": "#111412"
+          }
         }
       ],
       "./plugins/with-ios-scene-lifecycle",
