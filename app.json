@@ -8,14 +8,14 @@
     "scheme": "soundmap",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "bundleIdentifier": "com.soundmap.app",
+      "bundleIdentifier": "com.skylive.soundmap",
       "icon": "./assets/expo.icon",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Soundmap measures how loud it is around you. Audio is processed on your device and never recorded or stored."
       }
     },
     "android": {
-      "package": "com.soundmap.app",
+      "package": "com.skylive.soundmap",
       "adaptiveIcon": {
         "backgroundColor": "#4F7360",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
