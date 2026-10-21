@@ -78,7 +78,7 @@ For a preview build on an iPhone, register the phone first with `npx eas-cli@lat
 
 ### Google Play
 
-The same `production` profile makes an Android App Bundle, and EAS raises its version code on each build. Once, create the app in [Play Console](https://play.google.com/console) with the package `com.soundmap.app`, then give EAS a Google service account key so it can upload for you ([Expo's guide](https://docs.expo.dev/submit/android/)). Then:
+The same `production` profile makes an Android App Bundle, and EAS raises its version code on each build. Once, create the app in [Play Console](https://play.google.com/console) with the package `com.skylive.soundmap`, then give EAS a Google service account key so it can upload for you ([Expo's guide](https://docs.expo.dev/submit/android/)). Then:
 
 ```bash
 npx eas-cli@latest build --platform android --profile production

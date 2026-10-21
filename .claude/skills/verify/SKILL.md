@@ -45,9 +45,9 @@ Paths below are relative to the repo root. `sm` means `.claude/skills/verify/scr
    ```
 5. **Install and open.** Set the simulated GPS before anything asks for location. The coordinates below are Hayes Valley in San Francisco.
    ```bash
-   sm ad install com.soundmap.app .verify/build/soundmap.app
+   sm ad install com.skylive.soundmap .verify/build/soundmap.app
    sm ad settings location set 37.7763 -122.4232
-   sm ad open com.soundmap.app --relaunch --metro-host 127.0.0.1 --metro-port <port>
+   sm ad open com.skylive.soundmap --relaunch --metro-host 127.0.0.1 --metro-port <port>
    sm ad wait text "Measure" 60000
    ```
    Ready means the tab bar shows `Map, tab, 1 of 2` and `Measure, tab, 2 of 2`. The first bundle takes about 10-20 s.
@@ -60,7 +60,7 @@ After a JS edit, run `sm ad metro reload`. Don't reinstall. After a git operatio
 sm doctor
 ```
 
-Read-only. It checks that the `.app` exists and that the native inputs hash the same as when it was built, and that Metro is answering on the recorded port **from this checkout** (by the listener's cwd). Run it first, and again whenever the app shows a red screen, an old UI, or "No bundle URL". To confirm the driver session, run `sm ad snapshot -i`. It should print `App: com.soundmap.app`.
+Read-only. It checks that the `.app` exists and that the native inputs hash the same as when it was built, and that Metro is answering on the recorded port **from this checkout** (by the listener's cwd). Run it first, and again whenever the app shows a red screen, an old UI, or "No bundle URL". To confirm the driver session, run `sm ad snapshot -i`. It should print `App: com.skylive.soundmap`.
 
 ## Drive
 
@@ -70,7 +70,7 @@ Read `features/README.md`, then the feature file for what you're proving. Mechan
 - **Labels are the visible text.** Pressables have no `accessibilityRole` or `testID` (they show as `[other]`). Use exact strings: `Start measuring`, `Cancel`, `Measure again`, `Try again`, `Add to map`, `Not at any of these`, `<name>, <kind>` venue rows, `Added to map · View`, `Added to <name> · View`, `Open Settings`.
 - **Permission prompts.** Microphone (two buttons): `sm ad alert accept`. Location (three buttons): `alert accept` fails, so use `sm ad press 'label="Allow While Using App"'` or `'label="Don’t Allow"'` (curly apostrophe). `alert get` reports "not found" even while a prompt is visible. Trust `snapshot -i`, which lists the alert buttons.
 - **Skip prompts** when the permission path is not what you are proving: `sm ad settings permission grant microphone` / `... grant location` (`deny`, `reset` also work).
-- **Fresh state:** `npx convex run dev:resetMap` empties `measurements`, `cells` and `venues`, and keeps `venueSearches`, the saved OpenStreetMap results (it refuses unless the deployment sets `SOUNDMAP_ALLOW_RESET=true`, which only dev and local backends do). `sm ad settings clear-app-state com.soundmap.app`, then `open --relaunch`, empties the phone's outbox. The anonymous sign-in lives in the keychain, which `clear-app-state` keeps, so the phone stays the same user.
+- **Fresh state:** `npx convex run dev:resetMap` empties `measurements`, `cells` and `venues`, and keeps `venueSearches`, the saved OpenStreetMap results (it refuses unless the deployment sets `SOUNDMAP_ALLOW_RESET=true`, which only dev and local backends do). `sm ad settings clear-app-state com.skylive.soundmap`, then `open --relaunch`, empties the phone's outbox. The anonymous sign-in lives in the keychain, which `clear-app-state` keeps, so the phone stays the same user.
 - **Map hexagons and venue dots are not in the accessibility tree.** After "Added to map · View", the camera centers on the cell, so the hexagon sits at the map's center, about `(201, 395)` on a 402×874 iPhone. Press there. Tap empty map, such as `(80, 600)`, to deselect.
 - **Waiting:** `sm ad wait text "<text>" <ms>`. A measurement takes 30 s of audio frames, so wait up to 45000 for `Measure again`.
 
@@ -89,7 +89,7 @@ Kill only what this run started:
 
 ```bash
 npx convex run dev:resetMap                       # drop measurements, cells and venues this run saved
-sm ad settings clear-app-state com.soundmap.app   # drop anything left in the outbox
+sm ad settings clear-app-state com.skylive.soundmap   # drop anything left in the outbox
 sm ad close                                       # end the agent-device session
 sm stop                                           # Metro started by `sm metro`, by its process group
 ```

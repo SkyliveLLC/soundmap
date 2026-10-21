@@ -32,7 +32,7 @@ The Map tab shows the US colored with modeled transportation noise (roads, rail 
 - Tap `Added to map · View` after saving (see `add-to-map.md`).
 - Long-press the map for a walk's end, then long-press again or tap `From my location` for its start.
 - Open `soundmap:///?from=<lng>,<lat>&to=<lng>,<lat>` for a walk, optionally with `&quiet=quietest`. Points are longitude first.
-- Open `soundmap:///?cell=<h3>`: `sm ad open com.soundmap.app 'soundmap:///?cell=<h3>'` opens it directly. Opened another way (Safari, `simctl openurl`), iOS may ask `Open in "soundmap"?`. Accept it with `sm ad press 'label="Open"'`.
+- Open `soundmap:///?cell=<h3>`: `sm ad open com.skylive.soundmap 'soundmap:///?cell=<h3>'` opens it directly. Opened another way (Safari, `simctl openurl`), iOS may ask `Open in "soundmap"?`. Accept it with `sm ad press 'label="Open"'`.
 
 ## Driving it with agent-device
 
@@ -49,8 +49,8 @@ Preconditions:
 - **Measured.** After `Added to map · View`, the card shows both lines. Check that `round(laeq)` of the `npx convex data measurements` row equals the first line, and that the DOT line matches the cell in `.street-noise/blocks.tsv` when you have a build. For cell `8a2830828317fff`, DOT 2022 is 57.5, shown as 58.
 - **Aggregate.** Measure and add again at the same location (a venue reading counts too). The card shows `· 2 measurements`, and its dBA is the energy average of the two server rows. `npx convex data cells` holds that cell with `count` 2.
 - **Live.** With phone B on the Map tab showing the empty hint, add a measurement on phone A. Without touching B, its hint disappears within a few seconds. Open the cell on B (deep link, because the puck covers it) and its card matches A's row.
-- **Quiet walks.** These run on the Android emulator, driven with `adb` (scheme `soundmap`, package `com.soundmap.app`). Until the walking archive is hosted, serve the one `scripts/walk-graph.ts` built: `npx -y http-server <dir> -p 8792 -a 127.0.0.1 --cors`, `adb reverse tcp:8792 tcp:8792`, and `EXPO_PUBLIC_WALK_TILES=http://127.0.0.1:8792/<archive>.pmtiles` in `.env.local` before Metro starts.
-  - Planned: `adb shell "am start -W -a android.intent.action.VIEW -d 'soundmap:///?from=-122.418,37.7785&to=-122.4082,37.77' com.soundmap.app"` opens Civic Center to Division & Bryant (q1's soma-4). The quiet route follows Dore and Harrison. `adb logcat -s ReactNativeJS` (or Metro's output) shows `planWalk planned in <ms> ms (<n> tiles)`, once per plan.
+- **Quiet walks.** These run on the Android emulator, driven with `adb` (scheme `soundmap`, package `com.skylive.soundmap`). Until the walking archive is hosted, serve the one `scripts/walk-graph.ts` built: `npx -y http-server <dir> -p 8792 -a 127.0.0.1 --cors`, `adb reverse tcp:8792 tcp:8792`, and `EXPO_PUBLIC_WALK_TILES=http://127.0.0.1:8792/<archive>.pmtiles` in `.env.local` before Metro starts.
+  - Planned: `adb shell "am start -W -a android.intent.action.VIEW -d 'soundmap:///?from=-122.418,37.7785&to=-122.4082,37.77' com.skylive.soundmap"` opens Civic Center to Division & Bryant (q1's soma-4). The quiet route follows Dore and Harrison. `adb logcat -s ReactNativeJS` (or Metro's output) shows `planWalk planned in <ms> ms (<n> tiles)`, once per plan.
   - Long-press: `adb shell input swipe <x> <y> <x> <y> 800` is a long-press. With no walk it drops the end pin, and a second one sets the start.
   - From my location: `adb emu geo fix -122.4194 37.7793` (longitude first), then tap `From my location` and answer the system dialog: allow while using the app, or deny to see the card keep asking.
   - Too far: `from=-122.418,37.7785&to=-122.33,37.80`. Nevada: `from=-119.81,39.53&to=-119.80,39.525` gives `No walking map here yet.` while the archive covers only California. Off path: `from=-122.3937,37.7955&to=-122.386,37.805` puts the end in the Bay.
