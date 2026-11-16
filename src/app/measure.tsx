@@ -35,9 +35,10 @@ export default function MeasureScreen() {
         </View>
       </View>
 
-      <View style={styles.body}>
+      {/* Scrolls on short screens, where a finished summary is taller than the room between header and button. */}
+      <ScrollView style={styles.bodyScroll} contentContainerStyle={styles.body}>
         <Body state={state} colors={colors} />
-      </View>
+      </ScrollView>
 
       {state.status === 'denied' && (
         <Pressable onPress={() => Linking.openSettings()} style={styles.secondaryButton}>
@@ -188,7 +189,7 @@ function AddToMap({ state, add, choose, colors }: ReturnType<typeof useAddToMap>
       return (
         <View>
           <Caption colors={colors}>Were you at one of these? Its hour by hour loudness gets your reading.</Caption>
-          <ScrollView style={styles.venues} contentContainerStyle={styles.venueList}>
+          <ScrollView style={styles.venues} contentContainerStyle={styles.venueList} nestedScrollEnabled>
             {state.venues.map((venue) => (
               <Pressable
                 key={venue.osmId}
@@ -281,7 +282,8 @@ const styles = StyleSheet.create({
   brand: { fontSize: 17, fontWeight: '600', letterSpacing: 0.2 },
   pill: { flexShrink: 1, borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   pillText: { fontSize: 11, fontWeight: '600', letterSpacing: 1.2 },
-  body: { flex: 1, justifyContent: 'center', gap: 24 },
+  bodyScroll: { flex: 1 },
+  body: { flexGrow: 1, justifyContent: 'center', gap: 24, paddingVertical: 12 },
   readout: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: 8 },
   readoutValue: { fontSize: 120, fontWeight: '200', letterSpacing: -4, fontVariant: ['tabular-nums'] },
   readoutUnit: { fontSize: 22, fontWeight: '400' },
