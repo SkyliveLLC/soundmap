@@ -108,21 +108,27 @@ function useDeleteMine() {
     setState('deleting');
     try {
       await clearOutbox(db);
-      if (!convex.connectionState().isWebSocketConnected || isLoading) {
-        // Convex holds the call until it is online and signed in, and sends it after any upload it already holds,
-        // so a reading shared offline this session is deleted too. If the app closes first, the sync sends it at
-        // the next signed-in launch.
-        await markDeletePending();
-        setState('pending');
-        removeMine().then(
-          () => clearDeletePending().then(() => setState('deleted')),
-          (error: unknown) => console.warn('[about] delete waits for the next launch', error),
-        );
+      const online = convex.connectionState().isWebSocketConnected && !isLoading;
+      // Online and settled without a user: sign-in never worked, so this phone never uploaded anything.
+      if (online && !isAuthenticated) {
+        setState('deleted');
         return;
       }
-      // Online and settled without a user: sign-in never worked, so this phone never uploaded anything.
-      if (isAuthenticated) await removeMine();
-      setState('deleted');
+      // Kept until the server confirms, so if the app closes first the sync sends the delete at the next launch.
+      await markDeletePending();
+      const removed = removeMine().then(clearDeletePending);
+      if (online) {
+        await removed;
+        setState('deleted');
+        return;
+      }
+      // Convex holds the call until it is online and signed in, and sends it after any upload it already holds,
+      // so a reading shared offline this session is deleted too.
+      setState('pending');
+      removed.then(
+        () => setState('deleted'),
+        (error: unknown) => console.warn('[about] delete waits for the next launch', error),
+      );
     } catch (error) {
       console.warn('[about] delete failed', error);
       setState('failed');

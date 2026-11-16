@@ -48,21 +48,23 @@ export function useSync() {
     if (!isAuthenticated) return;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
-    // A pending delete goes first, so it can't take readings queued after it off the map.
-    SecureStore.getItemAsync(DELETE_PENDING_KEY)
-      .then(async (pending) => {
-        if (!pending) return;
-        await removeMine();
-        await clearDeletePending();
-      })
-      .catch((error: unknown) => console.warn('[sync] pending delete failed', error))
+    // A pending delete goes first, so it can't take readings queued after it off the map. A failed delete skips this
+    // round's uploads, which wait for the next launch with it. Only the first round checks: a rate-limit retry while
+    // offline would queue a second delete behind a reading shared after the first.
+    const finishDelete = async () => {
+      if (uploadAttempt > 0 || !(await SecureStore.getItemAsync(DELETE_PENDING_KEY))) return;
+      await removeMine();
+      await clearDeletePending();
+    };
+    finishDelete()
       .then(() => listQueued(db))
       .then((queued) => Promise.all(queued.map((measurement) => upload(measurement).catch(() => null))))
       .then((answers) => {
         const waits = answers.flatMap((limited) => (limited ? [limited.retryAfterMs] : []));
         if (stopped || waits.length === 0) return;
         retry = setTimeout(() => setUploadAttempt((attempt) => attempt + 1), Math.max(MIN_RATE_LIMIT_RETRY_MS, ...waits));
-      });
+      })
+      .catch((error: unknown) => console.warn('[sync] pending delete failed', error));
     return () => {
       stopped = true;
       clearTimeout(retry);
