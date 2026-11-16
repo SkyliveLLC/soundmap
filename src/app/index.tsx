@@ -167,8 +167,18 @@ export default function MapScreen() {
   }, [planned, start, end, insets.top]);
 
   // Asks for location when needed and returns where the phone is. When it can't, an alert says why and the
-  // map stays as it was.
+  // map stays as it was. A fix can take seconds, so taps while one is on its way are ignored.
+  const locating = useRef(false);
   const locate = async (): Promise<LngLat | null> => {
+    if (locating.current) return null;
+    locating.current = true;
+    try {
+      return await findMe();
+    } finally {
+      locating.current = false;
+    }
+  };
+  const findMe = async (): Promise<LngLat | null> => {
     const { granted } = await requestForegroundPermissionsAsync();
     if (!granted) {
       Alert.alert('Location is off', 'Turn on location for Soundmap in Settings to use where you are.', [

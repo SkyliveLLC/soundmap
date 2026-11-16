@@ -50,16 +50,33 @@ export const savedSearch = internalQuery({
   handler: async (ctx, { cell }) => await searchOf(ctx.db, cell),
 });
 
-/** How many blocks were searched on Overpass since `since`, counting up to `limit`. Called by `venueSearch.nearby`. */
-export const searchesSince = internalQuery({
-  args: { since: v.number(), limit: v.number() },
-  handler: async (ctx, { since, limit }) =>
-    (
-      await ctx.db
-        .query('venueSearches')
-        .withIndex('by_fetched_at', (q) => q.gt('fetchedAt', since))
-        .take(limit)
-    ).length,
+// Overpass's public server asks for well under 10,000 queries a day. Past this rate, from everyone together,
+// a block nobody searched yet skips the venue question instead, so a flood of new blocks can't get us blocked there.
+const SEARCHES_PER_MINUTE = 6;
+const MINUTE_MS = 60_000;
+
+/**
+ * Takes one of this minute's Overpass searches, or returns false when they are used up. A mutation, so parallel
+ * searches can't all see a free slot, and a search counts whether or not Overpass answers. Called by `venueSearch.nearby`.
+ */
+export const claimSearch = internalMutation({
+  args: {},
+  handler: async (ctx): Promise<boolean> => {
+    const now = Date.now();
+    const recent = await ctx.db
+      .query('overpassSearches')
+      .withIndex('by_at', (q) => q.gt('at', now - MINUTE_MS))
+      .take(SEARCHES_PER_MINUTE);
+    if (recent.length >= SEARCHES_PER_MINUTE) return false;
+    // Older claims no longer count, so each claim clears a few to keep the table small.
+    const stale = await ctx.db
+      .query('overpassSearches')
+      .withIndex('by_at', (q) => q.lte('at', now - MINUTE_MS))
+      .take(SEARCHES_PER_MINUTE);
+    for (const { _id } of stale) await ctx.db.delete(_id);
+    await ctx.db.insert('overpassSearches', { at: now });
+    return true;
+  },
 });
 
 /** Replaces a block's saved Overpass result. Called by `venueSearch.nearby`. */

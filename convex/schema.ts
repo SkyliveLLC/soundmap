@@ -37,8 +37,7 @@ export default defineSchema({
     hours: v.array(v.object({ energy: v.number(), count: v.number() })),
   }).index('by_osm_id', ['osmId']),
   // The venues OpenStreetMap lists around a block, saved by `venueSearch.nearby` so a block rarely asks Overpass twice.
-  venueSearches: defineTable({ cell: v.string(), venues: v.array(venue), fetchedAt: v.number() })
-    .index('by_cell', ['cell'])
-    // So `venueSearch.nearby` can count its recent Overpass searches.
-    .index('by_fetched_at', ['fetchedAt']),
+  venueSearches: defineTable({ cell: v.string(), venues: v.array(venue), fetchedAt: v.number() }).index('by_cell', ['cell']),
+  // When each recent Overpass search started, failed ones too, so `venues.claimSearch` can cap the rate.
+  overpassSearches: defineTable({ at: v.number() }).index('by_at', ['at']),
 });

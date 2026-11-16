@@ -16,7 +16,7 @@ import { usePalette, type Palette } from '@/theme';
 const PRIVACY_URL = 'https://github.com/SkyliveLLC/soundmap/blob/main/PRIVACY.md';
 const SUPPORT_URL = 'https://github.com/SkyliveLLC/soundmap/issues';
 
-type DeleteState = 'idle' | 'deleting' | 'deleted' | 'offline' | 'failed';
+type DeleteState = 'idle' | 'deleting' | 'deleted' | 'pending' | 'failed';
 
 /** How the app works, how accurate it is, the privacy policy, deleting your readings, and data credits. */
 export default function AboutScreen() {
@@ -88,7 +88,7 @@ export default function AboutScreen() {
 
 const deleteCopy: Record<Exclude<DeleteState, 'idle' | 'deleting'>, string> = {
   deleted: 'Your readings are off the map and deleted from our server.',
-  offline: 'You’re offline. Readings waiting on this phone were deleted. Try again online to delete the rest.',
+  pending: 'Readings waiting on this phone are deleted. The rest come off the map once you’re back online.',
   failed: 'Couldn’t delete your readings. Please try again.',
 };
 
@@ -99,7 +99,7 @@ const deleteCopy: Record<Exclude<DeleteState, 'idle' | 'deleting'>, string> = {
 function useDeleteMine() {
   const db = useSQLiteContext();
   const convex = useConvex();
-  const { isAuthenticated } = useConvexAuth();
+  const { isLoading, isAuthenticated } = useConvexAuth();
   const removeMine = useMutation(api.measurements.removeMine);
   const [state, setState] = useState<DeleteState>('idle');
 
@@ -107,11 +107,14 @@ function useDeleteMine() {
     setState('deleting');
     try {
       await clearOutbox(db);
-      // Without a user this phone never uploaded anything. Offline, the call would wait for a connection.
-      if (isAuthenticated && !convex.connectionState().isWebSocketConnected) {
-        setState('offline');
+      if (!convex.connectionState().isWebSocketConnected || isLoading) {
+        // Convex holds the call until it is online and signed in, and sends it after any upload it already holds,
+        // so a reading shared offline this session is deleted too.
+        removeMine().catch((error: unknown) => console.warn('[about] delete failed', error));
+        setState('pending');
         return;
       }
+      // Online and settled without a user: sign-in never worked, so this phone never uploaded anything.
       if (isAuthenticated) await removeMine();
       setState('deleted');
     } catch (error) {

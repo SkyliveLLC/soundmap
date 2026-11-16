@@ -9,6 +9,7 @@ The Measure tab records 30 seconds of A-weighted sound level, shows a live dBA r
 - `measure-cancel` stops a running session and returns to idle.
 - `measure-denied` shows the microphone-off message with `Open Settings` and `Try again`.
 - `measure-again` starts a fresh session from the summary.
+- `measure-interrupted` ends a running session with `Measuring stopped because the microphone was interrupted or you left the app. Please try again.` when the app goes to the background (switch to another app with `sm ad open com.apple.Preferences`, then `sm ad open com.skylive.soundmap`) or no level arrives for 3 s.
 - `measure-calibration` shows `CALIBRATED` when the phone model has an entry in `CALIBRATIONS` (`src/lib/calibration.ts`), otherwise `ESTIMATED`, an idle caption that says levels can be off by several dB, and a placeholder +120 dB offset. The reading carries `calibration: { model, offsetDb, id }`.
 
 ## How to get to it (user POV)

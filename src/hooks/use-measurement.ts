@@ -91,7 +91,8 @@ export function useMeasurement() {
     // A session must be 30 s of continuous sound. In the background iOS pauses the capture and Android records
     // silence, so leaving the app ends the session rather than stitching the gap in.
     const appState = AppState.addEventListener('change', (next) => {
-      if (next === 'background') dispatch({ type: 'failed', reason: 'interrupted' });
+      // Android also reports `background` for the microphone prompt, which comes before capture starts.
+      if (next === 'background' && lastLevelAt !== null) dispatch({ type: 'failed', reason: 'interrupted' });
     });
     const watchdog = setInterval(() => {
       if (lastLevelAt !== null && Date.now() - lastLevelAt > STALL_MS) dispatch({ type: 'failed', reason: 'interrupted' });

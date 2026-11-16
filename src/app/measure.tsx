@@ -237,7 +237,7 @@ function AddToMap({ state, add, choose, colors }: ReturnType<typeof useAddToMap>
           <Caption colors={colors}>
             {state.until === 'online'
               ? 'Saved. It will appear on the map when you’re back online.'
-              : 'Saved. The map is taking a lot of readings here right now, so yours will appear later.'}
+              : 'Saved. It will appear on the map in a little while.'}
           </Caption>
         </View>
       );

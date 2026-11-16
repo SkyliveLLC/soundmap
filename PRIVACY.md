@@ -12,7 +12,7 @@ Soundmap is a shared map of how loud places are. This page says what the app col
 - **A venue, if you name one.** If you say you were in a café, library or coworking space, the measurement carries that place's OpenStreetMap id and the hour of day.
 - **An anonymous id.** There are no accounts. When the app first opens it signs in as an anonymous user: a random id with no name, email or phone number. Measurements you add are stored with it, so we can recognize a retried upload, limit how often one phone can add measurements, and delete your readings when you ask. On iPhone the id is kept in the keychain, so it can survive deleting and reinstalling the app.
 
-The app uses your location only when you add a measurement, plan a walk from where you are, or tap the button that shows where you are. Your exact position stays on the phone. Planning a quiet walk happens on the phone too: your start and end never leave it.
+The app uses your location when you add a measurement, plan a walk from where you are, or tap the button that shows where you are, and, once you've allowed it, to open the map where you are and show your position on it. Your exact position stays on the phone. Planning a quiet walk happens on the phone too: your start and end never leave it.
 
 ## What the app downloads
 

@@ -83,7 +83,7 @@ For a preview build on an iPhone, register the phone first with `npx eas-cli@lat
 
 ### App Store listing
 
-`store.config.json` holds the listing: name, subtitle, description, keywords, category, age rating answers, and the privacy policy and support URLs. `npx eas-cli@latest metadata:push` sends it to App Store Connect. Add the review contact (name, email, phone) in App Store Connect, or under `apple.review` in the file. Reviewers need no login: the app signs in anonymously.
+`store.config.json` holds the listing: name, subtitle, description, keywords, category, and the privacy policy and support URLs. Both URLs point at this public repo's `main`, so merge there before `npx eas-cli@latest metadata:push` sends the listing to App Store Connect. Add the review contact (name, email, phone) in App Store Connect, or under `apple.review` in the file. Reviewers need no login: the app signs in anonymously.
 
 Set these in App Store Connect by hand, since EAS Metadata doesn't cover them:
 
@@ -92,6 +92,8 @@ Set these in App Store Connect by hand, since EAS Metadata doesn't cover them:
   - Location → Precise Location. A block is about as fine as Apple's precise threshold, so declare it as precise.
   - Identifiers → User ID (the anonymous Convex user).
   - Other Data → noise levels, the phone model and its calibration, and a venue and hour when named.
+- **Support contact:** the support URL and the app's Help link go to GitHub issues, which needs a GitHub account. Deleting readings needs no contact. To let anyone reach you, add a support email to PRIVACY.md, the About tab and `supportUrl`.
+- **Age rating:** answer every question None or No. The app has no user-written text, web browsing or purchases.
 - **Encryption:** `ITSAppUsesNonExemptEncryption` is false in the build (HTTPS only), so there's no export question.
 
 Before submitting, install the production build from TestFlight and check that the map shows shared measurements and a measurement reaches the map.
