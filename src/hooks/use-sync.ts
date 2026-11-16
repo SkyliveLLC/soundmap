@@ -64,7 +64,7 @@ export function useSync() {
         if (stopped || waits.length === 0) return;
         retry = setTimeout(() => setUploadAttempt((attempt) => attempt + 1), Math.max(MIN_RATE_LIMIT_RETRY_MS, ...waits));
       })
-      .catch((error: unknown) => console.warn('[sync] pending delete failed', error));
+      .catch((error: unknown) => console.warn('[sync] round failed', error));
     return () => {
       stopped = true;
       clearTimeout(retry);

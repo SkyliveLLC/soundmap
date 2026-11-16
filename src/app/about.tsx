@@ -118,7 +118,12 @@ function useDeleteMine() {
       await markDeletePending();
       const removed = removeMine().then(clearDeletePending);
       if (online) {
-        await removed;
+        // A refusal from the server is shown as failed, so the flag goes with it: otherwise the next launch would
+        // delete readings shared after the user saw it fail.
+        await removed.catch(async (error: unknown) => {
+          await clearDeletePending();
+          throw error;
+        });
         setState('deleted');
         return;
       }
