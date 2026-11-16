@@ -30,7 +30,7 @@ Soundmap has no ads, no analytics and no tracking. It does not sell or share dat
 
 ## Keeping and deleting data
 
-Measurements are kept so the map stays useful, until you delete them. To delete every reading this phone added, open **About** in the app and tap **Delete my readings**. They come off the map and out of our database straight away. A measurement that has not uploaded yet waits on the phone and is deleted then too, or when you uninstall the app.
+Measurements are kept so the map stays useful, until you delete them. To delete every reading this phone added, open **About** in the app and tap **Delete my readings**. They come off the map and out of our database straight away, or as soon as the phone is back online. A measurement that has not uploaded yet waits on the phone and is deleted then too, or when you uninstall the app.
 
 ## Children
 

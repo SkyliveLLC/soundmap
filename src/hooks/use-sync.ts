@@ -1,5 +1,6 @@
 import { useAuthActions } from '@convex-dev/auth/react';
 import { useConvexAuth, useMutation } from 'convex/react';
+import * as SecureStore from 'expo-secure-store';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -11,11 +12,21 @@ const SIGN_IN_RETRY_MS = 10_000;
 // The server's wait frees a single slot. Waiting at least this long lets a backlog through in a few rounds
 // instead of one round per freed slot.
 const MIN_RATE_LIMIT_RETRY_MS = 60_000;
+// Set while "Delete my readings" waits for the server, so a delete asked for offline survives the app being closed.
+const DELETE_PENDING_KEY = 'soundmap.deletePending';
 
-/** Keeps this install signed in to its anonymous user and uploads readings left in the outbox. Mount once. */
+/** Remembers that this phone's readings must come off the server, until `clearDeletePending`. */
+export const markDeletePending = () => SecureStore.setItemAsync(DELETE_PENDING_KEY, 'true');
+export const clearDeletePending = () => SecureStore.deleteItemAsync(DELETE_PENDING_KEY);
+
+/**
+ * Keeps this install signed in to its anonymous user, finishes a pending "Delete my readings", and uploads readings
+ * left in the outbox. Mount once.
+ */
 export function useSync() {
   const db = useSQLiteContext();
   const upload = useUpload();
+  const removeMine = useMutation(api.measurements.removeMine);
   const { signIn } = useAuthActions();
   const { isLoading, isAuthenticated } = useConvexAuth();
   const [signInAttempt, setSignInAttempt] = useState(0);
@@ -37,7 +48,15 @@ export function useSync() {
     if (!isAuthenticated) return;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
-    listQueued(db)
+    // A pending delete goes first, so it can't take readings queued after it off the map.
+    SecureStore.getItemAsync(DELETE_PENDING_KEY)
+      .then(async (pending) => {
+        if (!pending) return;
+        await removeMine();
+        await clearDeletePending();
+      })
+      .catch((error: unknown) => console.warn('[sync] pending delete failed', error))
+      .then(() => listQueued(db))
       .then((queued) => Promise.all(queued.map((measurement) => upload(measurement).catch(() => null))))
       .then((answers) => {
         const waits = answers.flatMap((limited) => (limited ? [limited.retryAfterMs] : []));
@@ -48,7 +67,7 @@ export function useSync() {
       stopped = true;
       clearTimeout(retry);
     };
-  }, [isAuthenticated, db, upload, uploadAttempt]);
+  }, [isAuthenticated, db, upload, removeMine, uploadAttempt]);
 }
 
 /**

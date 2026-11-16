@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '../../convex/_generated/api';
 import { LoudnessLegend } from '@/components/loudness-legend';
 import { deviceCalibration } from '@/hooks/use-measurement';
+import { clearDeletePending, markDeletePending } from '@/hooks/use-sync';
 import { clearOutbox } from '@/lib/outbox';
 import { STREET_NOISE_RELEASE } from '@/lib/street-noise';
 import { usePalette, type Palette } from '@/theme';
@@ -109,9 +110,14 @@ function useDeleteMine() {
       await clearOutbox(db);
       if (!convex.connectionState().isWebSocketConnected || isLoading) {
         // Convex holds the call until it is online and signed in, and sends it after any upload it already holds,
-        // so a reading shared offline this session is deleted too.
-        removeMine().catch((error: unknown) => console.warn('[about] delete failed', error));
+        // so a reading shared offline this session is deleted too. If the app closes first, the sync sends it at
+        // the next signed-in launch.
+        await markDeletePending();
         setState('pending');
+        removeMine().then(
+          () => clearDeletePending().then(() => setState('deleted')),
+          (error: unknown) => console.warn('[about] delete waits for the next launch', error),
+        );
         return;
       }
       // Online and settled without a user: sign-in never worked, so this phone never uploaded anything.
