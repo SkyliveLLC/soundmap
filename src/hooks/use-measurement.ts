@@ -12,7 +12,7 @@ export const FRAME_SEC = 0.125;
 export const SESSION_FRAMES = SESSION_SEC / FRAME_SEC;
 // Levels arrive every 125 ms. A gap this long means the system took the microphone (a call, Siri, another app's
 // recording, a route change) and stopped the capture, which doesn't restart on its own.
-const STALL_MS = 2_000;
+const STALL_MS = 3_000;
 
 // Simulators and emulators get no real phone's offset: their model id is the host's architecture,
 // and the iOS Simulator's input is synthetic.

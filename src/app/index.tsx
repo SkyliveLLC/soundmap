@@ -17,8 +17,8 @@ import {
   requestForegroundPermissionsAsync,
 } from 'expo-location';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { cellToLatLng } from 'h3-js';
 import { SymbolView } from 'expo-symbols';
+import { cellToLatLng } from 'h3-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
