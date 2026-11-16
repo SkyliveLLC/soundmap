@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { LOUDNESS_COLOR, loudnessBand } from './loudness.ts';
+import { LOUDNESS_COLOR, LOUDNESS_SCALE, loudnessBand } from './loudness.ts';
 
 test('each threshold starts the next band', () => {
   const labels = [30, 44.9, 45, 54.9, 55, 64.9, 65, 74.9, 75, 110].map((laeq) => loudnessBand(laeq).label);
@@ -39,4 +39,11 @@ test('the map color expression picks the same color as loudnessBand at every edg
   for (const laeq of [30, 44.9, 45, 54.9, 55, 64.9, 65, 74.9, 75, 110]) {
     assert.equal(stepColor(laeq), loudnessBand(laeq).color, `at ${laeq} dBA`);
   }
+});
+
+test('the legend lists every band once, quietest first, with its range', () => {
+  assert.deepEqual(
+    LOUDNESS_SCALE.map(({ label, range }) => `${label} ${range}`),
+    ['Very quiet <45', 'Quiet 45–55', 'Moderate 55–65', 'Loud 65–75', 'Very loud 75+'],
+  );
 });

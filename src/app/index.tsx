@@ -12,18 +12,19 @@ import {
 import { useQuery_experimental } from 'convex/react';
 import {
   Accuracy,
-  getCurrentPositionAsync,
   getForegroundPermissionsAsync,
   getLastKnownPositionAsync,
   requestForegroundPermissionsAsync,
 } from 'expo-location';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { cellToLatLng } from 'h3-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../../convex/_generated/api';
+import { LoudnessLegend } from '@/components/loudness-legend';
 import { RouteCard } from '@/components/route-card';
 import { RouteLayers } from '@/components/route-layers';
 import { VenueDetail } from '@/components/venue-detail';
@@ -37,6 +38,7 @@ import {
   type CellAggregate,
   type LngLat,
 } from '@/lib/cells';
+import { currentPosition } from '@/lib/location';
 import { LOUDNESS_COLOR, loudnessBand, type LoudnessBand } from '@/lib/loudness';
 import { formatLngLat, parseLngLat, parseQuietPreset } from '@/lib/quiet-routes';
 import {
@@ -53,7 +55,11 @@ import { streetNoiseReader } from '@/lib/street-noise-tiles';
 import { venuesToGeoJSON } from '@/lib/venues';
 import { usePalette, type Palette } from '@/theme';
 
-const MAP_STYLE = 'https://tiles.openfreemap.org/styles/positron';
+// OpenFreeMap's base map, matched to the app's light or dark palette.
+const MAP_STYLES = {
+  light: 'https://tiles.openfreemap.org/styles/positron',
+  dark: 'https://tiles.openfreemap.org/styles/dark',
+};
 // The lower 48, for a launch that doesn't know where you are.
 const CONTINENTAL_US: InitialViewState = { center: [-98.6, 39.8], zoom: 3 };
 const LOCAL_ZOOM = 13;
@@ -69,6 +75,7 @@ const readStreet = streetNoiseReader(STREET_NOISE_TILES);
 
 export default function MapScreen() {
   const colors = usePalette();
+  const mapStyle = MAP_STYLES[useColorScheme() === 'dark' ? 'dark' : 'light'];
   const insets = useSafeAreaInsets();
   const camera = useRef<CameraRef>(null);
   // The selected cell or venue (an OpenStreetMap id) lives in the route so "Added to map · View" can open the map
@@ -159,18 +166,46 @@ export default function MapScreen() {
     );
   }, [planned, start, end, insets.top]);
 
-  // Denied or no fix: nothing changes, and the card keeps asking for a long-press.
-  const startHere = async () => {
+  // Asks for location when needed and returns where the phone is. When it can't, an alert says why and the
+  // map stays as it was. A fix can take seconds, so taps while one is on its way are ignored.
+  const locating = useRef(false);
+  const locate = async (): Promise<LngLat | null> => {
+    if (locating.current) return null;
+    locating.current = true;
+    try {
+      return await findMe();
+    } finally {
+      locating.current = false;
+    }
+  };
+  const findMe = async (): Promise<LngLat | null> => {
     const { granted } = await requestForegroundPermissionsAsync();
-    if (!granted) return;
+    if (!granted) {
+      Alert.alert('Location is off', 'Turn on location for Soundmap in Settings to use where you are.', [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Open Settings', onPress: () => Linking.openSettings() },
+      ]);
+      return null;
+    }
     setLocationGranted(true);
-    // Without a fresh fix (indoors, or location services just turned on) the last known one is still where you are.
-    const position = await getCurrentPositionAsync({ accuracy: Accuracy.Balanced })
-      .catch(() => getLastKnownPositionAsync())
-      .catch(() => null);
-    if (!position) return;
-    const here: LngLat = [position.coords.longitude, position.coords.latitude];
-    router.setParams({ from: formatLngLat(here) });
+    const position = await currentPosition(Accuracy.Balanced);
+    if (!position) {
+      Alert.alert("Can't find your location", 'Try again in a moment, or nearer a window.');
+      return null;
+    }
+    return [position.coords.longitude, position.coords.latitude];
+  };
+
+  const startHere = async () => {
+    const here = await locate();
+    if (here) router.setParams({ from: formatLngLat(here) });
+  };
+
+  const showMe = async () => {
+    const here = await locate();
+    if (!here) return;
+    const [longitude, latitude] = here;
+    camera.current?.flyTo({ center: [longitude, latitude], zoom: Math.max(LOCAL_ZOOM, view?.zoom ?? 0), duration: 800 });
   };
 
   const readingAt = (cell: string, level = street?.cell === cell ? street.level : undefined) =>
@@ -180,17 +215,20 @@ export default function MapScreen() {
       level ?? UNKNOWN_STREET,
     );
   const reading = selectedCell && !venue ? readingAt(selectedCell) : null;
+  // Measured blocks only load from MEASURED_ZOOM in, and before the first camera move there is no view yet.
   const hint = sharedDown
     ? "Can't load shared measurements right now. Colors show modeled transportation noise."
-    : aggregates?.length === 0
-      ? 'Colors show modeled transportation noise. Measure a spot to add yours.'
-      : null;
+    : (view?.zoom ?? 0) < MEASURED_ZOOM
+      ? 'Zoom in to see measured blocks.'
+      : aggregates?.length === 0
+        ? 'Colors show modeled transportation noise. Measure a spot to add yours.'
+        : null;
 
   return (
     <View style={styles.screen}>
       <Map
         style={styles.screen}
-        mapStyle={MAP_STYLE}
+        mapStyle={mapStyle}
         logo={false}
         tintColor={colors.accent}
         // Keeps the attribution clear of the cell card at the bottom.
@@ -296,12 +334,25 @@ export default function MapScreen() {
           />
         </View>
       ) : (
-        hint && (
-          <View style={[styles.card, { backgroundColor: colors.background }]}>
-            <Text style={[styles.hint, { color: colors.muted }]}>{hint}</Text>
-          </View>
-        )
+        <View style={[styles.card, styles.guide, { backgroundColor: colors.background }]}>
+          {hint && <Text style={[styles.hint, { color: colors.ink }]}>{hint}</Text>}
+          <LoudnessLegend colors={colors} />
+          <Text style={[styles.tip, { color: colors.muted }]}>Tap a block for its level. Long-press to plan a quiet walk.</Text>
+        </View>
       )}
+      <Pressable
+        onPress={showMe}
+        accessibilityRole="button"
+        accessibilityLabel="Show my location"
+        hitSlop={6}
+        style={({ pressed }) => [
+          styles.locate,
+          { top: insets.top + 8, backgroundColor: colors.background },
+          pressed && { opacity: 0.7 },
+        ]}
+      >
+        <SymbolView name={{ ios: 'location', android: 'my_location' }} tintColor={colors.accent} size={20} />
+      </Pressable>
     </View>
   );
 }
@@ -356,7 +407,8 @@ function cardLines(reading: CellReading): CardLines {
       band,
       level: `${Math.round(laeq)}`,
       unit: 'dBA average',
-      detail: `${band.label} · ${count} ${count === 1 ? 'measurement' : 'measurements'}`,
+      // Phones aren't sound level meters, even calibrated ones, so a measured level is always called an estimate.
+      detail: `${band.label} · ${count} ${count === 1 ? 'measurement' : 'measurements'} · phone estimate`,
       note: streetNote(reading.street, source),
     };
   }
@@ -416,5 +468,20 @@ const styles = StyleSheet.create({
   unit: { fontSize: 15, fontWeight: '400' },
   detail: { fontSize: 15, fontWeight: '500' },
   note: { fontSize: 13, lineHeight: 18 },
+  guide: { gap: 10 },
   hint: { fontSize: 15, lineHeight: 22, textAlign: 'center' },
+  tip: { fontSize: 13, lineHeight: 18, textAlign: 'center' },
+  locate: {
+    position: 'absolute',
+    right: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+  },
 });

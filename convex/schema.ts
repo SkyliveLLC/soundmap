@@ -26,7 +26,9 @@ export default defineSchema({
   })
     .index('by_user_client', ['userId', 'clientId'])
     // Ends in `_creationTime`, so `measurements.add` counts a user's recent readings in one range.
-    .index('by_user', ['userId']),
+    .index('by_user', ['userId'])
+    // Ends in `_creationTime` too, for the per-block rate limit and `moderation.removeBlock`.
+    .index('by_cell', ['cell']),
   // One row per hexagon with the summed sound energy of its readings, kept in step as readings are added and removed.
   cells: defineTable({ cell: v.string(), energy: v.number(), count: v.number() }).index('by_cell', ['cell']),
   // A measured OpenStreetMap venue, with 24 hour-of-day energy totals kept in step as readings are added and removed.
@@ -36,4 +38,6 @@ export default defineSchema({
   }).index('by_osm_id', ['osmId']),
   // The venues OpenStreetMap lists around a block, saved by `venueSearch.nearby` so a block rarely asks Overpass twice.
   venueSearches: defineTable({ cell: v.string(), venues: v.array(venue), fetchedAt: v.number() }).index('by_cell', ['cell']),
+  // When each recent Overpass search started, failed ones too, so `venues.claimSearch` can cap the rate.
+  overpassSearches: defineTable({ at: v.number() }).index('by_at', ['at']),
 });

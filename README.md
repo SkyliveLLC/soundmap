@@ -2,7 +2,7 @@
 
 A crowdsourced map of how loud places are, across the United States. Think Waze, but for noise. It helps remote workers find a quiet café and helps people with sensory sensitivities plan calmer routes.
 
-Status: early prototype. iOS and Android, built with Expo.
+Status: 1.0. iOS and Android, built with Expo.
 
 ## What works today
 
@@ -10,9 +10,10 @@ Status: early prototype. iOS and Android, built with Expo.
 - **Map.** Add a measurement to the shared map and it shows up as a colored hexagon (H3, resolution 10, about one city block) for everyone, live. Hexagons with several measurements show their energy average. Tap any block to see its reading. A measurement added offline waits on the phone and uploads when the connection returns. The map opens where you are once you've allowed location, and on the lower 48 before that.
 - **Street noise.** All 50 states and DC start colored with transportation noise (roads, rail and aviation) from the US DOT [National Transportation Noise Map](https://www.bts.gov/geospatial/national-transportation-noise-map) (NTNM). It is a modeled 24 hour average, not a measurement, so the app shows it faintly under your hexagons and labels it as modeled. It is never averaged into your readings. Zoomed in, each hexagon is a block. Zoomed out, larger hexagons show the area's average, with blocks quieter than 45 dBA counted as silent.
 - **Quiet walks.** Long-press the map where you're going, then start from your location or a second long-press. The app plans the walk on the phone and shows a route that is measurably quieter than the shortest one, colored block by block, with the extra distance and time. Measured blocks count first and modeled street noise fills in elsewhere. Blocks DOT doesn't model, like a pier, are drawn grey and left out of how much quieter a route is. Walks up to 5 km, in California for now.
+- **About.** The third tab explains the map and its colors, how accurate this phone is, links the privacy policy and help, deletes this phone's readings, and credits the data sources.
 - **Venues.** When you add a measurement near cafés, libraries or coworking spaces, the app asks whether you were in one of them. Its dot on the map opens a card with its loudness by hour of day, so you can see when it is quietest. Places come from [OpenStreetMap](https://www.openstreetmap.org).
 
-Phone microphones vary, so each reading is converted to dB SPL with an offset for that phone model and stored with the model and calibration it used. Models are added to `CALIBRATIONS` in `src/lib/calibration.ts` once measured against a reference sound level meter. Until a model has an entry, its readings use a placeholder offset and the Measure tab labels them UNCALIBRATED along with the phone's model. No model has an entry yet. See [Calibrate a phone model](#calibrate-a-phone-model).
+Phone microphones vary, so each reading is converted to dB SPL with an offset for that phone model and stored with the model and calibration it used. Models are added to `CALIBRATIONS` in `src/lib/calibration.ts` once measured against a reference sound level meter. Until a model has an entry, its readings use a placeholder offset, the Measure tab labels them ESTIMATED, and the About tab names the phone's model and says its levels can be off by several dB. No model has an entry yet. See [Calibrate a phone model](#calibrate-a-phone-model).
 
 ## Privacy
 
@@ -22,7 +23,9 @@ The policy for store listings is [PRIVACY.md](PRIVACY.md). Keep it in step with 
 - Adding a measurement to the map is always your choice, and it is shared with everyone.
 - Only the noise summary, the H3 cell, the time, and the phone model with its calibration are sent, plus a venue's OpenStreetMap id and the hour when you name one. Raw GPS coordinates never leave the phone.
 - Planning a walk happens on the phone. It downloads the walking map around your trip the way the map downloads its tiles; your start and end never leave the phone.
-- There are no accounts. Each install signs in as an anonymous user, used to recognize retried uploads and to limit each install to 120 readings an hour. Readings past the limit wait on the phone and upload later.
+- There are no accounts. Each phone signs in as an anonymous user when the app opens, used to recognize retried uploads, to limit each phone to 120 readings an hour, and to delete its readings. Each block also takes at most 30 readings an hour from everyone together. Readings past either limit wait on the phone and upload later.
+- About → Delete my readings takes every reading this phone added off the map and out of the database.
+- The map downloads tiles and the shared measurements for the area on screen from launch. OpenFreeMap (base map), Cloudflare (street noise and walking tiles) and Convex see the phone's IP address and those areas, like any web server.
 - To list nearby venues, the phone sends our server the block it would share anyway. The server asks OpenStreetMap, so OpenStreetMap never sees the phone.
 - The map only ever shows per-block and per-venue averages and counts. Who measured, and when, stays on the server.
 
@@ -42,6 +45,8 @@ On a new deployment, set the Convex Auth signing keys (`JWT_PRIVATE_KEY` and `JW
 
 To take one user's readings off the map, such as someone flooding it, copy the `userId` from one of their rows in the dashboard's `measurements` table and run `npx convex run moderation:removeUser '{"userId": "<id>"}'`. Add `--prod` for the production map. Their readings leave the block and venue averages too. A run removes 500 and schedules the next until none are left.
 
+A flood from many anonymous users is cleaned up by block instead: `npx convex run moderation:removeBlock '{"cell": "<cell>", "since": <ms since 1970>}'` removes every reading that block got since then, whoever sent it. The per-block limit keeps such a flood to 30 readings per block per hour, and `venueSearch.nearby` asks Overpass for at most 6 new blocks a minute, so a flood of new blocks can't get the server blocked there.
+
 On the iOS Simulator the sound meter uses a synthetic café soundscape instead of the Mac microphone, so you can test the whole flow without a real device.
 
 ```bash
@@ -60,7 +65,7 @@ The EAS project is `@stivenkn/soundmap`, and its id is in `app.json`. Sign in to
 npx convex deploy         # pushes convex/ to the production deployment
 ```
 
-Set the Convex Auth signing keys on the production deployment the same way as on dev. `npx convex dashboard --prod` opens it, and its settings page shows the deployment URL. The app needs that URL at build time, and `.env.local` never reaches EAS, so store it as an EAS environment variable for both profiles. Preview builds then use the production map too.
+Set the Convex Auth signing keys on the production deployment the same way as on dev. `npx convex dashboard --prod` opens it, and its settings page shows the deployment URL. The app needs that URL at build time, and `.env.local` never reaches EAS, so store it as an EAS environment variable for both profiles (`eas.json` reads the `production` and `preview` environments). Preview builds then use the production map too. Without it, `app.config.ts` stops the cloud build rather than ship an app that crashes on launch.
 
 ```bash
 npx eas-cli@latest env:set --name EXPO_PUBLIC_CONVEX_URL --value <production URL> \
@@ -76,6 +81,23 @@ npx eas-cli@latest submit --platform ios
 
 For a preview build on an iPhone, register the phone first with `npx eas-cli@latest device:create`.
 
+### App Store listing
+
+`store.config.json` holds the listing: name, subtitle, description, keywords, category, and the privacy policy and support URLs. Both URLs point at this public repo's `main`, so merge there before `npx eas-cli@latest metadata:push` sends the listing to App Store Connect. Add the review contact (name, email, phone) in App Store Connect, or under `apple.review` in the file. Reviewers need no login: the app signs in anonymously.
+
+Set these in App Store Connect by hand, since EAS Metadata doesn't cover them:
+
+- **Pricing and Availability:** the United States only. Street noise covers the 50 states and DC, and quiet walks California.
+- **App Privacy:** no tracking. Data collected and linked to the user (the anonymous id), all for App Functionality:
+  - Location → Precise Location. A block is about as fine as Apple's precise threshold, so declare it as precise.
+  - Identifiers → User ID (the anonymous Convex user).
+  - Other Data → noise levels, the phone model and its calibration, and a venue and hour when named.
+- **Support contact:** the support URL and the app's Help link go to GitHub issues, which needs a GitHub account. Deleting readings needs no contact. To let anyone reach you, add a support email to PRIVACY.md, the About tab and `supportUrl`.
+- **Age rating:** answer every question None or No. The app has no user-written text, web browsing or purchases.
+- **Encryption:** `ITSAppUsesNonExemptEncryption` is false in the build (HTTPS only), so there's no export question.
+
+Before submitting, install the production build from TestFlight and check that the map shows shared measurements and a measurement reaches the map.
+
 ### Google Play
 
 The same `production` profile makes an Android App Bundle, and EAS raises its version code on each build. Once, create the app in [Play Console](https://play.google.com/console) with the package `com.skylive.soundmap`, then give EAS a Google service account key so it can upload for you ([Expo's guide](https://docs.expo.dev/submit/android/)). Then:
@@ -89,11 +111,11 @@ The upload goes to the internal testing track. Promote it to open testing in Pla
 
 ## Layout
 
-- `convex/` is the backend: the schema, anonymous auth, `measurements.ts`, which adds a reading and serves the per-cell averages for the regions the map is showing, `venues.ts`, which serves venues' hourly averages, `moderation.ts`, which takes one user's readings off the map, and `venueSearch.ts`, which finds venues near a block and saves the result per block.
+- `convex/` is the backend: the schema, anonymous auth, `measurements.ts`, which adds a reading, deletes a phone's own readings, and serves the per-cell averages for the regions the map is showing, `venues.ts`, which serves venues' hourly averages, `moderation.ts`, which takes one user's or one block's readings off the map, and `venueSearch.ts`, which finds venues near a block and saves the result per block.
 - `modules/sound-meter/` is the native module (Swift and Kotlin). It applies A-weighting and emits a level every 125 ms.
 - `src/lib/` holds the pure logic: acoustics, per-model calibration, H3 cells and regions, the rules a measurement must pass, the loudness color scale, street noise and reading it from the tiles, the walking graph tiles, planning quiet walks and the route card's copy, venues, and the offline outbox. `convex/` imports from it too.
 - `src/hooks/` holds the measurement state machine, the "add to map" flow, the sync that signs in and uploads queued readings, and the walk plan that fetches a trip's walking tiles and measured blocks.
-- `src/app/` holds the screens (Expo Router): the Map and Measure tabs. `src/components/` holds larger pieces of those screens, such as the venue card, the route card and the route's map layers.
+- `src/app/` holds the screens (Expo Router): the Map, Measure and About tabs. `src/components/` holds larger pieces of those screens, such as the venue card, the route card and the route's map layers.
 - `scripts/` holds the street noise and walking graph pipelines. Each writes one PMTiles archive, hosted on Cloudflare R2 rather than shipped in the app.
 - `assets/brand/mark.svg` is the logo. `scripts/brand-icons.sh` renders the app icon, the Android adaptive icon layers, the splash image and the favicon from it, and needs ImageMagick (`brew install imagemagick`).
 - `patches/` holds a `patch-package` fix that lets `h3-js` run on Hermes ([uber/h3-js#203](https://github.com/uber/h3-js/issues/203)).
@@ -137,7 +159,7 @@ To try a graph before uploading it, serve `.walk-graph/` with a server that supp
 
 You need the phone, a speaker that plays steady pink noise, a quiet room, and a reference sound level meter (class 1 or 2, A-weighted, set to LAeq or slow).
 
-1. Open the Measure tab. While the phone is uncalibrated, the label shows its model, such as `UNCALIBRATED · iPhone16,1`. Use that model as the key in `CALIBRATIONS`.
+1. Open the About tab. Accuracy names the phone's model, such as `iPhone16,1`. Use that model as the key in `CALIBRATIONS`.
 2. Play the pink noise at about 70 to 80 dBA. Hold the phone's microphone and the meter side by side, about a meter from the speaker.
 3. Run the app's 30 second measurement and the meter's LAeq over the same 30 seconds. Write down both LAeq values. The app shows LAeq rounded to a whole dB, so use that number. The result is good to about half a dB.
 4. Do this 3 times.

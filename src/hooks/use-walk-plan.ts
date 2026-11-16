@@ -95,10 +95,10 @@ export function useWalkPlan(from: LngLat | null, to: LngLat | null): WalkState {
   return outcome ?? { kind: 'loading' };
 }
 
-/** planWalk, logging its wall time. The result is still pure; the emulator check reads the log line. */
+/** planWalk, logging its wall time in development builds. The result is still pure; the emulator check reads the log line. */
 function timedPlan(input: Parameters<typeof planWalk>[0]): PlanOutcome {
   const started = performance.now();
   const planned = planWalk(input);
-  console.log(`planWalk ${planned.kind} in ${Math.round(performance.now() - started)} ms (${input.tiles.length} tiles)`);
+  if (__DEV__) console.log(`planWalk ${planned.kind} in ${Math.round(performance.now() - started)} ms (${input.tiles.length} tiles)`);
   return planned;
 }

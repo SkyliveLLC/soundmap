@@ -1,11 +1,12 @@
 import { useConvex, useConvexAuth } from 'convex/react';
-import { Accuracy, getCurrentPositionAsync, requestForegroundPermissionsAsync } from 'expo-location';
+import { requestForegroundPermissionsAsync } from 'expo-location';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useRef, useState } from 'react';
 
 import { api } from '../../convex/_generated/api';
 import { useUpload } from '@/hooks/use-sync';
 import { cellAt } from '@/lib/cells';
+import { currentPosition } from '@/lib/location';
 import type { Measurement } from '@/lib/measurement';
 import { enqueue } from '@/lib/outbox';
 import type { Venue } from '@/lib/venues';
@@ -23,6 +24,8 @@ export type AddToMapState =
   /** Waiting in the outbox for a connection, or for the rate limit to let it in. It reaches the map on its own. */
   | { status: 'queued'; until: 'online' | 'rateLimit' }
   | { status: 'denied' }
+  /** No location fix came in time, typically indoors. Nothing was shared. */
+  | { status: 'noFix' }
   | { status: 'failed' };
 
 /**
@@ -50,8 +53,12 @@ export function useAddToMap({ summary, calibration }: Pick<Measurement, 'summary
         setState({ status: 'denied' });
         return;
       }
-      const { coords } = await getCurrentPositionAsync({ accuracy: Accuracy.High });
-      const cell = cellAt(coords.latitude, coords.longitude);
+      const position = await currentPosition();
+      if (!position) {
+        setState({ status: 'noFix' });
+        return;
+      }
+      const cell = cellAt(position.coords.latitude, position.coords.longitude);
       const venues = online() ? await nearbyVenues(cell) : [];
       if (venues.length > 0) setState({ status: 'choosing', cell, venues });
       else await share(cell, null);

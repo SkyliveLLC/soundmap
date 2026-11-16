@@ -15,10 +15,11 @@ const MAX_NEARBY = 8;
 // Places open and close slowly, and the public Overpass server is often overloaded, so a block is searched about once a month.
 const SEARCH_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
 
+
 /**
  * Cafés, libraries and coworking spaces around a block, from OpenStreetMap. Runs here rather than on the
  * phone so Overpass only ever sees our server, and the phone only ever sends the block it already shares.
- * Returns the saved list when Overpass fails, or none, so a failed search just skips the venue question.
+ * Returns the saved list when Overpass fails or the search rate is used up, or none, so the venue question is just skipped.
  */
 export const nearby = action({
   args: { cell: v.string() },
@@ -27,6 +28,7 @@ export const nearby = action({
     if (!isValidCell(cell) || getResolution(cell) !== CELL_RESOLUTION) throw new ConvexError('Not a block');
     const saved = await ctx.runQuery(internal.venues.savedSearch, { cell });
     if (saved && Date.now() - saved.fetchedAt < SEARCH_MAX_AGE_MS) return saved.venues;
+    if (!(await ctx.runMutation(internal.venues.claimSearch))) return saved?.venues ?? [];
     try {
       const venues = await searchOverpass(cell);
       // Saved even when the phone gave up waiting, so the next reading here gets the question straight away.

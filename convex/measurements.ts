@@ -5,12 +5,14 @@ import { mutation, query } from './_generated/server';
 import { calibration } from './validators';
 import { energyOf, levelOf } from '../src/lib/acoustics.ts';
 import { MAX_REGIONS, REGION_RESOLUTION, isRegion, regionRange, type CellAggregate } from '../src/lib/cells.ts';
-import { RATE_LIMIT, rateLimited, rejectionReason } from '../src/lib/measurement.ts';
+import { BLOCK_RATE_LIMIT, RATE_LIMIT, rateLimited, rejectionReason } from '../src/lib/measurement.ts';
+import { removeUserReadings } from './moderation';
 import { recordVisit } from './venues';
 
 /**
  * Adds one reading to the shared map, and to its venue's hour when it has one.
- * Safe to retry: a clientId already seen from this user is a no-op, even past the rate limit.
+ * Safe to retry: a clientId already seen from this user is a no-op, even past the rate limits.
+ * Refuses with `RateLimited` data when this user, or this block, got too many readings lately.
  */
 export const add = mutation({
   args: {
@@ -32,11 +34,16 @@ export const add = mutation({
     const now = Date.now();
     const reason = rejectionReason(measurement, now);
     if (reason) throw new ConvexError(reason);
-    const recent = await ctx.db
+    const savedAt = (rows: { _creationTime: number }[]) => rows.map((row) => row._creationTime);
+    const byUser = await ctx.db
       .query('measurements')
       .withIndex('by_user', (q) => q.eq('userId', userId).gt('_creationTime', now - RATE_LIMIT.windowMs))
       .take(RATE_LIMIT.count);
-    const limited = rateLimited(recent.map((row) => row._creationTime), now);
+    const byBlock = await ctx.db
+      .query('measurements')
+      .withIndex('by_cell', (q) => q.eq('cell', measurement.cell).gt('_creationTime', now - BLOCK_RATE_LIMIT.windowMs))
+      .take(BLOCK_RATE_LIMIT.count);
+    const limited = rateLimited(savedAt(byUser), now) ?? rateLimited(savedAt(byBlock), now, BLOCK_RATE_LIMIT);
     if (limited) throw new ConvexError(limited);
 
     const { clientId, cell, at, summary, calibration, visit } = measurement;
@@ -50,6 +57,19 @@ export const add = mutation({
       .unique();
     if (row) await ctx.db.patch(row._id, { energy: row.energy + energy, count: row.count + 1 });
     else await ctx.db.insert('cells', { cell, energy, count: 1 });
+  },
+});
+
+/**
+ * Takes every reading this phone's anonymous user added off the shared map, for "Delete my readings" in the app.
+ * Removes the first batch now and schedules the rest. Returns how many this call removed.
+ */
+export const removeMine = mutation({
+  args: {},
+  handler: async (ctx): Promise<number> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError('Not signed in');
+    return await removeUserReadings(ctx, userId);
   },
 });
 
