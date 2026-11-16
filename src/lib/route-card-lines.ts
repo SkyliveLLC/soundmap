@@ -36,7 +36,7 @@ export function routeCardLines(state: WalkState, preset: QuietPreset): RouteCard
     case 'too-close':
       return only('Pick an end farther from the start.');
     case 'no-walking-data':
-      return only('No walking map here yet.');
+      return only('No walking map here yet.', 'Quiet walks cover California for now.');
     case 'off-path':
       return only(`Pick ${state.end === 'from' ? 'a start' : 'an end'} closer to a street or path.`);
     case 'no-path':

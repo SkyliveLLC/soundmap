@@ -16,6 +16,16 @@ export function loudnessBand(laeq: number): LoudnessBand {
   return QUIETER_BANDS.find((band) => laeq < band.below) ?? LOUDEST_BAND;
 }
 
+/** Every band, quietest first, with the dBA range it covers, for the map's legend. */
+export const LOUDNESS_SCALE: readonly (LoudnessBand & { range: string })[] = [
+  ...QUIETER_BANDS.map((band, i) => ({
+    label: band.label,
+    color: band.color,
+    range: i === 0 ? `<${band.below}` : `${QUIETER_BANDS[i - 1].below}–${band.below}`,
+  })),
+  { ...LOUDEST_BAND, range: `${QUIETER_BANDS[QUIETER_BANDS.length - 1].below}+` },
+];
+
 type ColorExpression = Extract<NonNullable<FillLayerSpecification['paint']>['fill-color'], unknown[]>;
 
 /**

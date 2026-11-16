@@ -88,7 +88,7 @@ test('each state that is not a plan gets one line', () => {
     oneLine('Quiet routes are for walks up to 5 km.', 'These points are 8.2 km apart.'),
   );
   assert.deepEqual(routeCardLines({ kind: 'too-close' }, 'quieter'), oneLine('Pick an end farther from the start.'));
-  assert.deepEqual(routeCardLines({ kind: 'no-walking-data' }, 'quieter'), oneLine('No walking map here yet.'));
+  assert.deepEqual(routeCardLines({ kind: 'no-walking-data' }, 'quieter'), oneLine('No walking map here yet.', 'Quiet walks cover California for now.'));
   assert.deepEqual(
     routeCardLines({ kind: 'off-path', end: 'from' }, 'quieter'),
     oneLine('Pick a start closer to a street or path.'),

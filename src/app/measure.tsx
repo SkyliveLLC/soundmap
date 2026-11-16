@@ -27,10 +27,10 @@ export default function MeasureScreen() {
     <SafeAreaView edges={['top']} style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
         <Text style={[styles.brand, { color: colors.ink }]}>Soundmap</Text>
+        {/* About explains the difference and names the phone model. */}
         <View style={[styles.pill, { borderColor: colors.muted }]}>
-          {/* The model is the CALIBRATIONS key, so it shrinks to fit rather than truncate. */}
-          <Text style={[styles.pillText, { color: colors.muted }]} numberOfLines={1} adjustsFontSizeToFit>
-            {deviceCalibration.id ? 'CALIBRATED' : `UNCALIBRATED · ${deviceCalibration.model}`}
+          <Text style={[styles.pillText, { color: colors.muted }]} numberOfLines={1}>
+            {deviceCalibration.id ? 'CALIBRATED' : 'ESTIMATED'}
           </Text>
         </View>
       </View>
@@ -72,6 +72,7 @@ const buttonLabel: Record<MeasurementState['status'], string> = {
 
 const failureCopy: Record<FailureReason, string> = {
   'no-input': 'No microphone is available on this device.',
+  interrupted: 'Measuring stopped because the microphone was interrupted or you left the app. Please try again.',
   unexpected: 'Something went wrong while measuring. Please try again.',
 };
 
@@ -83,6 +84,7 @@ function Body({ state, colors }: { state: MeasurementState; colors: Palette }) {
           <Readout value={null} colors={colors} />
           <Caption colors={colors}>
             Hold your phone still for {SESSION_SEC} seconds. Sound is measured on your phone and never recorded.
+            {!deviceCalibration.id && ' This phone model isn’t calibrated yet, so levels are estimates and can be off by several dB.'}
           </Caption>
         </>
       );
@@ -235,7 +237,7 @@ function AddToMap({ state, add, choose, colors }: ReturnType<typeof useAddToMap>
           <Caption colors={colors}>
             {state.until === 'online'
               ? 'Saved. It will appear on the map when you’re back online.'
-              : 'Saved. You’ve added a lot of readings this hour, so it will appear on the map later.'}
+              : 'Saved. The map is taking a lot of readings here right now, so yours will appear later.'}
           </Caption>
         </View>
       );
@@ -245,6 +247,15 @@ function AddToMap({ state, add, choose, colors }: ReturnType<typeof useAddToMap>
           <Caption colors={colors}>Location is off for Soundmap, so this measurement was not added to the map.</Caption>
           <Pressable onPress={() => Linking.openSettings()} style={styles.secondaryButton}>
             <Text style={[styles.secondaryLabel, { color: colors.accent }]}>Open Settings</Text>
+          </Pressable>
+        </View>
+      );
+    case 'noFix':
+      return (
+        <View>
+          <Caption colors={colors}>Couldn’t find your location, so this measurement was not added. Try again in a moment, or nearer a window.</Caption>
+          <Pressable onPress={add} style={styles.secondaryButton}>
+            <Text style={[styles.secondaryLabel, { color: colors.accent }]}>Try again</Text>
           </Pressable>
         </View>
       );

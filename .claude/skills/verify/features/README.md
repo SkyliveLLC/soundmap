@@ -14,7 +14,7 @@ This directory is the maintained source for verifying Soundmap's user-facing beh
 ## Driving conventions
 
 - Tap app content with `sm tap "<exact visible text>"`. Tap tabs and system alert buttons with `sm ad press 'label="..."'`.
-- Tabs: `Map, tab, 1 of 2` and `Measure, tab, 2 of 2`.
+- Tabs: `Map, tab, 1 of 3`, `Measure, tab, 2 of 3` and `About, tab, 3 of 3`.
 - Permission prompts are part of the user path. Pre-grant them with `sm ad settings permission grant <microphone|location>` only when the prompt is not under test, and say so in the report.
 - Map hexagons have no accessibility element. Press them by screen position (see `map.md`).
 - Treat quoted labels as literal. `·` is a middle dot. `Don’t Allow` uses a curly apostrophe.

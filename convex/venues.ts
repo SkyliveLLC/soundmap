@@ -50,6 +50,18 @@ export const savedSearch = internalQuery({
   handler: async (ctx, { cell }) => await searchOf(ctx.db, cell),
 });
 
+/** How many blocks were searched on Overpass since `since`, counting up to `limit`. Called by `venueSearch.nearby`. */
+export const searchesSince = internalQuery({
+  args: { since: v.number(), limit: v.number() },
+  handler: async (ctx, { since, limit }) =>
+    (
+      await ctx.db
+        .query('venueSearches')
+        .withIndex('by_fetched_at', (q) => q.gt('fetchedAt', since))
+        .take(limit)
+    ).length,
+});
+
 /** Replaces a block's saved Overpass result. Called by `venueSearch.nearby`. */
 export const saveSearch = internalMutation({
   args: { cell: v.string(), venues: v.array(venue) },

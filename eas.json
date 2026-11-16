@@ -4,9 +4,11 @@
   },
   "build": {
     "production": {
+      "environment": "production",
       "autoIncrement": true
     },
     "preview": {
+      "environment": "preview",
       "distribution": "internal"
     }
   }

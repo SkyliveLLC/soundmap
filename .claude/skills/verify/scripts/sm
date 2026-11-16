@@ -16,7 +16,7 @@ STATE="$ROOT/.verify"
 APP="$STATE/build/soundmap.app"
 METRO_ENV="$STATE/metro.env"
 # Files that change the native binary. A change here needs `sm build` again.
-NATIVE_PATHS=(app.json package.json package-lock.json modules plugins patches assets/expo.icon assets/images)
+NATIVE_PATHS=(app.json app.config.ts package.json package-lock.json modules plugins patches assets/expo.icon assets/images)
 # T3 Code's agent-device launcher. It requires the --config and --session flags device_open returns.
 AD="${AGENT_DEVICE:-$HOME/.t3/userdata/device/bin/agent-device}"
 

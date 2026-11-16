@@ -50,23 +50,31 @@ export function rejectionReason({ cell, at, summary, calibration }: Omit<Measure
   return null;
 }
 
+/** At most `count` readings in any trailing `windowMs`, counted by when the server saved them. */
+export type RateLimit = { count: number; windowMs: number };
+
 // One session at a time back to back, so no person reaches it. A script flooding the map does.
-/** Most readings one user may add in any trailing window, counted by when the server saved them. */
-export const RATE_LIMIT = { count: (60 * 60) / SESSION_SEC, windowMs: 60 * 60_000 };
+/** Most readings one user may add in any trailing window. */
+export const RATE_LIMIT: RateLimit = { count: (60 * 60) / SESSION_SEC, windowMs: 60 * 60_000 };
+
+// Anonymous users are free to make, so the per-user limit alone can't stop a flood from many of them. This caps
+// how fast any one block can change, whoever sends the readings. Several people measuring the same café stay far below it.
+/** Most readings one block may get in any trailing window, from everyone together. */
+export const BLOCK_RATE_LIMIT: RateLimit = { count: 30, windowMs: 60 * 60_000 };
 
 /**
- * What `measurements.add` throws, as ConvexError data, when this user added too many readings lately.
+ * What `measurements.add` throws, as ConvexError data, when this user or this block got too many readings lately.
  * The reading itself is fine: the phone keeps it and tries again after `retryAfterMs`.
  */
 export type RateLimited = { kind: 'rateLimited'; retryAfterMs: number };
 
 /**
- * The refusal for a user's next reading, or null when they may add it. `savedAt` holds when the server saved
- * their readings since `now - RATE_LIMIT.windowMs`, oldest first, and needs at most `RATE_LIMIT.count` of them.
+ * The refusal for the next reading, or null when it may be added. `savedAt` holds when the server saved the
+ * readings `limit` counts since `now - limit.windowMs`, oldest first, and needs at most `limit.count` of them.
  */
-export function rateLimited(savedAt: readonly number[], now: number): RateLimited | null {
-  if (savedAt.length < RATE_LIMIT.count) return null;
-  return { kind: 'rateLimited', retryAfterMs: savedAt[0] + RATE_LIMIT.windowMs - now };
+export function rateLimited(savedAt: readonly number[], now: number, limit: RateLimit = RATE_LIMIT): RateLimited | null {
+  if (savedAt.length < limit.count) return null;
+  return { kind: 'rateLimited', retryAfterMs: savedAt[0] + limit.windowMs - now };
 }
 
 /** The rate limit refusal in an error from `measurements.add`, or null for any other error. */

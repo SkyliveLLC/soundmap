@@ -1,10 +1,11 @@
 import { ConvexAuthProvider, type TokenStorage } from '@convex-dev/auth/react';
 import { ConvexReactClient } from 'convex/react';
-import { Tabs } from 'expo-router';
+import { Tabs, type ErrorBoundaryProps } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { SymbolView } from 'expo-symbols';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSync } from '@/hooks/use-sync';
 import { createSchema } from '@/lib/outbox';
@@ -31,6 +32,20 @@ export default function RootLayout() {
         <AppTabs />
       </SQLiteProvider>
     </ConvexAuthProvider>
+  );
+}
+
+/** Shown by Expo Router instead of a blank screen when rendering throws. "Try again" renders the app again. */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  const colors = usePalette();
+  console.warn('[layout] render failed', error);
+  return (
+    <View style={[styles.error, { backgroundColor: colors.background }]}>
+      <Text style={[styles.errorText, { color: colors.ink }]}>Something went wrong.</Text>
+      <Pressable onPress={retry} style={({ pressed }) => [styles.retry, { backgroundColor: colors.accent }, pressed && { opacity: 0.7 }]}>
+        <Text style={[styles.retryLabel, { color: colors.onAccent }]}>Try again</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -70,7 +85,23 @@ function AppTabs() {
             ),
           }}
         />
+        <Tabs.Screen
+          name="about"
+          options={{
+            title: 'About',
+            tabBarIcon: ({ color, size }) => (
+              <SymbolView name={{ ios: 'info.circle', android: 'info' }} tintColor={color} size={size} />
+            ),
+          }}
+        />
       </Tabs>
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  error: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20, padding: 28 },
+  errorText: { fontSize: 17, fontWeight: '500' },
+  retry: { height: 48, borderRadius: 24, paddingHorizontal: 28, alignItems: 'center', justifyContent: 'center' },
+  retryLabel: { fontSize: 16, fontWeight: '600' },
+});

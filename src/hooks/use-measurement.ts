@@ -1,6 +1,6 @@
 import * as Device from 'expo-device';
 import { useEffect, useReducer } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import SoundMeter from '../../modules/sound-meter/src/SoundMeterModule';
 import { summarize, type NonEmptyArray, type NoiseSummary } from '@/lib/acoustics';
@@ -10,6 +10,9 @@ import { SESSION_SEC } from '@/lib/measurement';
 // Matches the 125 ms window LevelMeter uses on both platforms.
 export const FRAME_SEC = 0.125;
 export const SESSION_FRAMES = SESSION_SEC / FRAME_SEC;
+// Levels arrive every 125 ms. A gap this long means the system took the microphone (a call, Siri, another app's
+// recording, a route change) and stopped the capture, which doesn't restart on its own.
+const STALL_MS = 2_000;
 
 // Simulators and emulators get no real phone's offset: their model id is the host's architecture,
 // and the iOS Simulator's input is synthetic.
@@ -29,7 +32,8 @@ export type MeasurementState =
   | { status: 'done'; summary: NoiseSummary; calibration: Calibration }
   | { status: 'failed'; reason: FailureReason };
 
-export type FailureReason = 'no-input' | 'unexpected';
+/** `interrupted`: the phone took the microphone away or the app left the screen, so the session lost its audio. */
+export type FailureReason = 'no-input' | 'interrupted' | 'unexpected';
 
 type Action =
   | { type: 'start' }
@@ -49,7 +53,8 @@ function reducer(state: MeasurementState, action: Action): MeasurementState {
     case 'denied':
       return { status: 'denied' };
     case 'failed':
-      return { status: 'failed', reason: action.reason };
+      // Only a running session can fail: a late stall or background event must not undo a finished one.
+      return state.status === 'measuring' ? { status: 'failed', reason: action.reason } : state;
     case 'level': {
       if (state.status !== 'measuring') return state;
       const levels: NonEmptyArray<number> = [...state.levels, action.dbSpl];
@@ -68,7 +73,7 @@ function failureReason(error: unknown): FailureReason {
 
 /**
  * Runs one fixed-length noise measurement. The microphone is held only while the
- * state is `measuring`: leaving that state (done, cancel, denial, unmount) releases it.
+ * state is `measuring`: leaving that state (done, cancel, denial, interruption, unmount) releases it.
  */
 export function useMeasurement() {
   const [state, dispatch] = useReducer(reducer, { status: 'idle' });
@@ -77,9 +82,20 @@ export function useMeasurement() {
   useEffect(() => {
     if (!measuring) return;
     let active = true;
+    // Null until capture starts, so the permission prompt doesn't count as a stall.
+    let lastLevelAt: number | null = null;
     const subscription = SoundMeter.addListener('onLevel', ({ dbfs }) => {
+      lastLevelAt = Date.now();
       dispatch({ type: 'level', dbSpl: dbfs + deviceCalibration.offsetDb });
     });
+    // A session must be 30 s of continuous sound. In the background iOS pauses the capture and Android records
+    // silence, so leaving the app ends the session rather than stitching the gap in.
+    const appState = AppState.addEventListener('change', (next) => {
+      if (next === 'background') dispatch({ type: 'failed', reason: 'interrupted' });
+    });
+    const watchdog = setInterval(() => {
+      if (lastLevelAt !== null && Date.now() - lastLevelAt > STALL_MS) dispatch({ type: 'failed', reason: 'interrupted' });
+    }, STALL_MS / 4);
 
     (async () => {
       const { granted } = await SoundMeter.requestPermissionsAsync();
@@ -89,6 +105,7 @@ export function useMeasurement() {
         return;
       }
       await SoundMeter.start();
+      lastLevelAt = Date.now();
       // Cleanup may have run while start was in flight. Its stop() came too early.
       if (!active) SoundMeter.stop();
     })().catch((error: unknown) => {
@@ -101,6 +118,8 @@ export function useMeasurement() {
     return () => {
       active = false;
       subscription.remove();
+      appState.remove();
+      clearInterval(watchdog);
       SoundMeter.stop();
     };
   }, [measuring]);

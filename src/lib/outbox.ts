@@ -82,6 +82,11 @@ export async function dequeue(db: SQLiteDatabase, clientId: string) {
   await db.runAsync('DELETE FROM outbox WHERE client_id = ?', clientId);
 }
 
+/** Drops every reading still waiting, for "Delete my readings". */
+export async function clearOutbox(db: SQLiteDatabase) {
+  await db.runAsync('DELETE FROM outbox');
+}
+
 function parseRow(row: Record<string, unknown>): Measurement | null {
   const { client_id, at, cell, laeq, lamax, l10, l90, duration_sec, model, offset_db, calibration_id, visit } = row;
   if (typeof client_id !== 'string' || typeof cell !== 'string' || !isValidCell(cell)) return null;

@@ -50,7 +50,7 @@ Paths below are relative to the repo root. `sm` means `.claude/skills/verify/scr
    sm ad open com.skylive.soundmap --relaunch --metro-host 127.0.0.1 --metro-port <port>
    sm ad wait text "Measure" 60000
    ```
-   Ready means the tab bar shows `Map, tab, 1 of 2` and `Measure, tab, 2 of 2`. The first bundle takes about 10-20 s.
+   Ready means the tab bar shows `Map, tab, 1 of 3`, `Measure, tab, 2 of 3` and `About, tab, 3 of 3`. The first bundle takes about 10-20 s.
 
 After a JS edit, run `sm ad metro reload`. Don't reinstall. After a git operation that rewrites files (merge, rebase, checkout), run `sm stop && sm metro` first. Metro's watcher missed those changes twice and kept serving old code. Expo Router puts each screen in its own dev bundle, so grepping the entry bundle can't tell you whether code is fresh. Check the behavior instead.
 

@@ -1,0 +1,18 @@
+{
+  "configVersion": 0,
+  "apple": {
+    "copyright": "2026 Skylive LLC",
+    "categories": ["NAVIGATION", "UTILITIES"],
+    "info": {
+      "en-US": {
+        "title": "Soundmap",
+        "subtitle": "Find quiet places and walks",
+        "description": "Soundmap is a shared map of how loud places are, measured by the people who go there.\n\nMEASURE\nHold your phone still for 30 seconds. Soundmap measures the A-weighted sound level on your phone: the average, the background, the loud moments and the peak. Audio is never recorded.\n\nSHARE\nAdd a measurement to the map and it shows up for everyone as the block you were on, never your exact position. Name the café, library or coworking space you were in, and its card shows how loud it gets by hour of day, so you can see when it is quietest.\n\nEXPLORE\nEvery US block starts colored with modeled traffic, rail and aviation noise from the US Department of Transportation, under the levels people measured.\n\nWALK QUIETER\nLong-press where you're going and Soundmap plans a walk that is measurably quieter than the shortest one, on your phone. Quiet walks cover California for now.\n\nPRIVATE BY DESIGN\nNo account, no ads, no tracking. Delete every reading you added from the About tab.\n\nPhone microphones differ. Until your phone model is calibrated against a sound level meter, its levels are estimates and can be off by several dB.",
+        "keywords": ["noise", "quiet", "decibel", "sound level", "dB", "noise map", "cafe", "study", "sensory", "walk", "calm"],
+        "releaseNotes": "First release.",
+        "privacyPolicyUrl": "https://github.com/SkyliveLLC/soundmap/blob/main/PRIVACY.md",
+        "supportUrl": "https://github.com/SkyliveLLC/soundmap/issues"
+      }
+    }
+  }
+}

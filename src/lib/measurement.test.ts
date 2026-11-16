@@ -8,7 +8,7 @@ import { ConvexError } from 'convex/values';
 import type { NoiseSummary } from './acoustics.ts';
 import { calibrationFor, type Calibration } from './calibration.ts';
 import { cellAt } from './cells.ts';
-import { RATE_LIMIT, asRateLimited, rateLimited, rejectionReason } from './measurement.ts';
+import { BLOCK_RATE_LIMIT, RATE_LIMIT, asRateLimited, rateLimited, rejectionReason } from './measurement.ts';
 
 const NOW = Date.UTC(2026, 9, 6, 18);
 const CELL = cellAt(37.7651, -122.4196);
@@ -60,6 +60,14 @@ const saved = (count: number, oldestAgo: number) => Array.from({ length: count }
 test('a user adds readings until the last hour holds the limit, then waits for the oldest to age out', () => {
   assert.equal(rateLimited(saved(RATE_LIMIT.count - 1, 50 * MINUTE), NOW), null);
   assert.deepEqual(rateLimited(saved(RATE_LIMIT.count, 50 * MINUTE), NOW), { kind: 'rateLimited', retryAfterMs: 10 * MINUTE });
+});
+
+test('a block takes readings from everyone until it holds its own limit', () => {
+  assert.equal(rateLimited(saved(BLOCK_RATE_LIMIT.count - 1, 20 * MINUTE), NOW, BLOCK_RATE_LIMIT), null);
+  assert.deepEqual(rateLimited(saved(BLOCK_RATE_LIMIT.count, 20 * MINUTE), NOW, BLOCK_RATE_LIMIT), {
+    kind: 'rateLimited',
+    retryAfterMs: 40 * MINUTE,
+  });
 });
 
 test('only the rate limit refusal reads as one, so other refusals still leave the outbox', () => {
